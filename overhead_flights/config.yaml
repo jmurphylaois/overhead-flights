@@ -1,0 +1,54 @@
+name: Overhead Flights
+version: "1.1.0"
+slug: overhead_flights
+url: https://github.com/jmurphylaois1/overhead-flights
+description: >-
+  Live map of the aircraft flying over your home: flight tracks, airline logos,
+  routes, where-to-look angles, overhead history, stats and a wall-screen mode.
+arch:
+  - aarch64
+  - amd64
+init: false
+startup: application
+boot: auto
+ingress: true
+ingress_port: 8750
+panel_icon: mdi:airplane
+panel_title: Flights
+homeassistant_api: true
+watchdog: "http://[HOST]:[PORT:8750]/api/config"
+ports:
+  8750/tcp: null
+ports_description:
+  8750/tcp: "Optional direct access for wall tablets (leave empty to use the sidebar only)"
+options:
+  data_source: adsb_lol
+  radius_km: 110
+  overhead_km: 5
+  refresh_seconds: 10
+  tour_seconds: 5
+  ahead_minutes: 5
+  night_dim_start: 22
+  night_dim_end: 7
+  airports: []
+  use_paid_tracks: true
+schema:
+  data_source: list(adsb_lol|fr24_web)
+  latitude: float?
+  longitude: float?
+  home_elevation_m: int?
+  radius_km: int(10,250)
+  overhead_km: float(0.5,50)
+  refresh_seconds: int(5,120)
+  tour_seconds: int(2,60)
+  ahead_minutes: int(1,30)
+  night_dim_start: int(0,23)
+  night_dim_end: int(0,23)
+  airports:
+    - name: str
+      iata: str
+      lat: float
+      lon: float
+  fr24_api_key: password?
+  fr24_api_per_minute: int(1,10)?
+  use_paid_tracks: bool

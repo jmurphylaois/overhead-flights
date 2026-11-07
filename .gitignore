@@ -1,0 +1,9 @@
+# personal settings (contains your API key) and local history
+config.json
+passes.jsonl
+sightings.jsonl
+heatmap.json
+names_cache.json
+.venv/
+__pycache__/
+.DS_Store

@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Overhead Flights Stats</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📊</text></svg>">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+<style>
+  :root {
+    --bg: #0b1016; --panel: #111923; --card: #17212d; --line: #243243; --grid: #1c2836;
+    --text: #e6edf3; --muted: #8b9bb0; --accent: #38bdf8; --hot: #f97316;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 1180px; margin: 0 auto; padding: 20px 16px 48px; }
+  .top { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
+  h1 { font-size: 20px; margin: 0; flex: 1; }
+  a { color: var(--accent); text-decoration: none; }
+  .chip { background: var(--card); color: var(--text); border: 1px solid var(--line); border-radius: 999px; padding: 5px 12px; font: inherit; font-size: 13px; cursor: pointer; }
+  .chip.on { background: var(--accent); color: #0b1016; border-color: var(--accent); font-weight: 600; }
+  .note { color: var(--muted); font-size: 12px; margin: -8px 0 18px; }
+  .tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
+  .tile { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
+  .tile .k { font-size: 11px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); }
+  .tile .v { font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tile .s { font-size: 12px; color: var(--muted); }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; min-width: 0; }
+  .card h2 { font-size: 14px; margin: 0 0 2px; }
+  .card .sub { color: var(--muted); font-size: 12px; margin-bottom: 12px; }
+  /* vertical bar chart */
+  .vbars { position: relative; height: 180px; display: flex; align-items: flex-end; gap: 2px; border-bottom: 1px solid var(--line); }
+  .vbars .gl { position: absolute; left: 0; right: 0; border-top: 1px solid var(--grid); pointer-events: none; }
+  .vbars .gl span { position: absolute; right: 100%; top: -8px; padding-right: 6px; font-size: 10px; color: var(--muted); }
+  .vb { flex: 1; height: 100%; display: flex; align-items: flex-end; position: relative; cursor: default; }
+  .vb i { display: block; width: 100%; background: var(--accent); border-radius: 4px 4px 0 0; min-height: 0; }
+  .vb:hover i { background: #7dd3fc; }
+  .vbwrap { padding-left: 28px; }
+  .xlab { display: flex; gap: 2px; font-size: 10px; color: var(--muted); margin-top: 4px; }
+  .xlab span { flex: 1; text-align: center; overflow: hidden; white-space: nowrap; }
+  /* horizontal bars */
+  .hrow { display: grid; grid-template-columns: minmax(90px, 40%) 1fr 44px; align-items: center; gap: 10px; padding: 4px 0; font-size: 13px; }
+  .hrow .nm { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .hrow .track { height: 10px; }
+  .hrow .track i { display: block; height: 100%; background: var(--accent); border-radius: 0 4px 4px 0; }
+  .hrow .n { text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; font-weight: 600; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+  td { padding: 7px 8px; border-bottom: 1px solid var(--grid); }
+  td.n { text-align: right; font-variant-numeric: tabular-nums; }
+  #heat { height: 460px; border-radius: 8px; }
+  .empty { color: var(--muted); padding: 20px 0; text-align: center; }
+  #tip { position: fixed; pointer-events: none; z-index: 9999; background: #0b1016; border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; font-size: 12px; display: none; white-space: nowrap; box-shadow: 0 4px 12px rgba(0,0,0,.5); }
+  #tip b { font-variant-numeric: tabular-nums; }
+  @media (max-width: 860px) { .tiles { grid-template-columns: 1fr 1fr; } .grid2 { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<main>
+  <div class="top">
+    <h1>📊 Overhead Flights — Stats</h1>
+    <span id="range"></span>
+    <a href="./">← Live map</a>
+  </div>
+  <div class="note" id="note"></div>
+  <div class="tiles" id="tiles"></div>
+  <div class="grid2">
+    <div class="card"><h2>Flights per day</h2><div class="sub">Every aircraft seen within range</div><div id="perday"></div></div>
+    <div class="card"><h2>Busiest hours</h2><div class="sub">Flights first seen in each hour of the day</div><div id="perhour"></div></div>
+  </div>
+  <div class="grid2">
+    <div class="card"><h2>Top airlines</h2><div class="sub">By number of flights</div><div id="airlines"></div></div>
+    <div class="card"><h2>Top aircraft</h2><div class="sub">By number of flights</div><div id="types"></div></div>
+  </div>
+  <div class="grid2">
+    <div class="card"><h2>Lowest overhead passes</h2><div class="sub" id="lowsub"></div><div id="lowest"></div></div>
+    <div class="card"><h2>Rare visitors</h2><div class="sub">Aircraft types seen only once so far</div><div id="rare"></div></div>
+  </div>
+  <div class="card"><h2>Where planes fly</h2><div class="sub" id="heatsub"></div><div id="heat"></div></div>
+</main>
+<div id="tip"></div>
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const tip = $("#tip");
+document.addEventListener("mousemove", e => {
+  const t = e.target.closest("[data-tip]");
+  if (!t) { tip.style.display = "none"; return; }
+  tip.innerHTML = t.dataset.tip; tip.style.display = "block";
+  const w = tip.offsetWidth;
+  tip.style.left = Math.min(e.clientX + 12, innerWidth - w - 8) + "px"; tip.style.top = (e.clientY - 34) + "px";
+});
+let CFG, heatMap, heatLayer, days = 7;
+try { days = +localStorage.getItem("statsDays") || 7; } catch {}
+const fmtDate = ts => new Date(ts * 1000).toLocaleDateString([], { day: "numeric", month: "short" });
+const fmtDT = ts => new Date(ts * 1000).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+
+function niceMax(v) { if (v <= 4) return 4; const p = 10 ** Math.floor(Math.log10(v)); return Math.ceil(v / p) * p; }
+function vbars(el, values, labels, tips, labelEvery = 1) {
+  const max = niceMax(Math.max(1, ...values));
+  const gl = [0.5, 1].map(f => `<div class="gl" style="bottom:${f * 100}%"><span>${Math.round(max * f)}</span></div>`).join("");
+  el.innerHTML = `<div class="vbwrap"><div class="vbars">${gl}${values.map((v, i) =>
+    `<div class="vb" data-tip="${tips[i]}"><i style="height:${v / max * 100}%"></i></div>`).join("")}</div>
+    <div class="xlab">${labels.map((l, i) => `<span>${i % labelEvery === 0 ? esc(l) : ""}</span>`).join("")}</div></div>`;
+}
+function hbars(el, rows) {
+  if (!rows.length) { el.innerHTML = `<div class="empty">No data yet</div>`; return; }
+  const max = Math.max(...rows.map(r => r[1]));
+  el.innerHTML = rows.map(([n, c]) => `<div class="hrow" data-tip="${esc(n)}: <b>${c}</b> flight${c === 1 ? "" : "s"}">
+    <span class="nm">${esc(n)}</span><span class="track"><i style="width:${Math.max(2, c / max * 100)}%"></i></span><span class="n">${c}</span></div>`).join("");
+}
+function flightTable(el, rows, cols) {
+  if (!rows.length) { el.innerHTML = `<div class="empty">None yet — this fills in as flights are logged</div>`; return; }
+  el.innerHTML = `<table><thead><tr>${cols.map(c => `<th${c.n ? ' style="text-align:right"' : ""}>${c.h}</th>`).join("")}</tr></thead>
+    <tbody>${rows.map(r => `<tr>${cols.map(c => `<td${c.n ? ' class="n"' : ""}>${c.f(r)}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
+}
+
+async function load() {
+  $("#range").innerHTML = [1, 7, 30, 90].map(d => `<button class="chip ${d === days ? "on" : ""}" data-d="${d}">${d === 1 ? "24 h" : d + " days"}</button>`).join(" ");
+  document.querySelectorAll("#range .chip").forEach(b => b.onclick = () => { days = +b.dataset.d; try { localStorage.setItem("statsDays", days); } catch {} load(); });
+  const s = await (await fetch("api/stats?days=" + days)).json();
+  $("#note").textContent = `Logging since ${fmtDT(s.collecting_since)}. Stats grow as the app keeps running.`;
+  const peak = s.by_hour.indexOf(Math.max(...s.by_hour));
+  const tiles = [
+    ["Flights seen", s.total.toLocaleString(), days === 1 ? "last 24 hours" : `last ${days} days`],
+    ["Overhead passes", s.overhead_total.toLocaleString(), `within ${CFG.overhead_km} km of the house`],
+    ["Busiest hour", s.total ? `${String(peak).padStart(2, "0")}:00` : "—", s.total ? `${s.by_hour[peak]} flights` : ""],
+    ["Top airline", s.airlines[0]?.[0] || "—", s.airlines[0] ? `${s.airlines[0][1]} flights` : ""],
+  ];
+  $("#tiles").innerHTML = tiles.map(([k, v, sub]) => `<div class="tile"><div class="k">${k}</div><div class="v" title="${esc(v)}">${esc(v)}</div><div class="s">${esc(sub)}</div></div>`).join("");
+
+  const dayLbl = s.by_day.map(d => new Date(d.day + "T12:00").toLocaleDateString([], days > 7 ? { day: "numeric", month: "short" } : { weekday: "short" }));
+  vbars($("#perday"), s.by_day.map(d => d.all), dayLbl,
+        s.by_day.map((d, i) => `${esc(dayLbl[i])}: <b>${d.all}</b> flights · ${d.overhead} overhead`),
+        days > 30 ? 14 : days > 7 ? 5 : 1);
+  vbars($("#perhour"), s.by_hour, s.by_hour.map((_, h) => String(h).padStart(2, "0")),
+        s.by_hour.map((v, h) => `${String(h).padStart(2, "0")}:00–${String(h).padStart(2, "0")}:59: <b>${v}</b> flights`), 3);
+  hbars($("#airlines"), s.airlines);
+  hbars($("#types"), s.types);
+  $("#lowsub").textContent = `Within ${CFG.overhead_km} km, lowest altitude first`;
+  const fl = r => `<b>${esc(r.number || r.callsign || r.registration)}</b> <span style="color:var(--muted)">${esc(r.airline)}</span>`;
+  flightTable($("#lowest"), s.lowest, [
+    { h: "Flight", f: fl }, { h: "Route", f: r => `${esc(r.origin || "?")} → ${esc(r.destination || "?")}` },
+    { h: "Altitude", n: 1, f: r => (r.alt_at_min || 0).toLocaleString() + " ft" }, { h: "When", f: r => fmtDT(r.first) }]);
+  flightTable($("#rare"), s.rare, [
+    { h: "Aircraft", f: r => esc(r.aircraft || r.type) }, { h: "Flight", f: fl },
+    { h: "Closest", n: 1, f: r => r.min_dist + " km" }, { h: "When", f: r => fmtDT(r.first) }]);
+
+  $("#heatsub").textContent = `Every airborne position sampled every 30 s since ${fmtDT(s.heat_since)} (${s.heat.length.toLocaleString()} map cells). Brighter = more traffic.`;
+  if (!heatMap) {
+    heatMap = L.map("heat");
+    const esri = "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/";
+    L.tileLayer(esri + "World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}", { attribution: "Tiles &copy; Esri", maxZoom: 16 }).addTo(heatMap);
+    heatMap.createPane("labels"); heatMap.getPane("labels").style.zIndex = 450; heatMap.getPane("labels").style.pointerEvents = "none";
+    L.tileLayer(esri + "World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}", { maxZoom: 16, pane: "labels" }).addTo(heatMap);
+    const home = [CFG.latitude, CFG.longitude];
+    heatMap.fitBounds(L.latLng(home).toBounds(CFG.radius_km * 2000));
+    L.circle(home, { radius: CFG.overhead_km * 1000, color: "#f97316", weight: 1.5, fill: false }).addTo(heatMap).bindTooltip("Overhead zone");
+  }
+  if (heatLayer) heatMap.removeLayer(heatLayer);
+  const hmax = Math.max(1, ...s.heat.map(h => h[2]));
+  // one hue, dark -> light: magnitude reads as brightness
+  heatLayer = L.heatLayer(s.heat.map(([a, b, c]) => [a, b, Math.sqrt(c / hmax)]), {
+    radius: 14, blur: 16, maxZoom: 10, max: 1,
+    gradient: { 0.2: "#0c4a6e", 0.45: "#0369a1", 0.7: "#38bdf8", 1: "#e0f2fe" },
+  }).addTo(heatMap);
+}
+(async () => { CFG = await (await fetch("api/config")).json(); load(); setInterval(load, 5 * 60 * 1000); })();
+</script>
+</body>
+</html>

@@ -1,0 +1,48 @@
+configuration:
+  data_source:
+    name: Data source
+    description: >-
+      adsb_lol (default) uses open data from adsb.lol, with routes from adsbdb and photos from
+      planespotters.net. fr24_web uses FlightRadar24's website feed: unofficial, personal use only,
+      and it can be rate-limited.
+  latitude:
+    name: Latitude
+    description: Leave empty to use your Home Assistant home location.
+  longitude:
+    name: Longitude
+    description: Leave empty to use your Home Assistant home location.
+  home_elevation_m:
+    name: Ground height (m)
+    description: Height of your home above sea level, used for the look-up angle. Leave empty to use Home Assistant's elevation.
+  radius_km:
+    name: Range (km)
+    description: How far from home to show aircraft.
+  overhead_km:
+    name: Overhead distance (km)
+    description: Planes passing within this distance are logged as "passed overhead".
+  refresh_seconds:
+    name: Refresh (seconds)
+    description: How often to update aircraft positions.
+  tour_seconds:
+    name: Tour time per flight (seconds)
+  ahead_minutes:
+    name: Ahead lines (minutes)
+    description: Length of the dashed "where it's going" projection lines.
+  night_dim_start:
+    name: Wall mode dims from (hour)
+  night_dim_end:
+    name: Wall mode dims until (hour)
+  airports:
+    name: Airports to mark
+    description: Airports to show on the map and use in the airport traffic filter (name, IATA code, lat, lon).
+  fr24_api_key:
+    name: FlightRadar24 API key (optional)
+    description: An official FR24 API key. Used sparingly for airline/airport names and tracks of flights you click.
+  fr24_api_per_minute:
+    name: FR24 API calls per minute
+    description: Keep below your plan's limit (default 8).
+  use_paid_tracks:
+    name: Use FR24 credits for tracks
+    description: Allow the official API (40 credits per track) when you click a flight whose track is otherwise unavailable.
+network:
+  8750/tcp: Direct access for wall tablets (optional)

@@ -1,0 +1,713 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Overhead Flights</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>✈️</text></svg>">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  :root {
+    --bg: #0b1016; --panel: #111923; --card: #17212d; --line: #243243;
+    --text: #e6edf3; --muted: #8b9bb0; --accent: #38bdf8; --hot: #f97316; --ok: #22c55e;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+    font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  #app { display: grid; grid-template-columns: 1fr 390px; height: 100%; }
+  #mapwrap { position: relative; }
+  #map { height: 100%; background: #0b1016; transition: filter 2s; }
+  #side { background: var(--panel); border-left: 1px solid var(--line); overflow-y: auto; display: flex; flex-direction: column; }
+  header { padding: 12px 16px 10px; border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--panel); z-index: 3; display: grid; gap: 8px; }
+  .hrow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  header h1 { font-size: 16px; margin: 0; flex: 1; letter-spacing: .02em; white-space: nowrap; }
+  #status { font-size: 12px; color: var(--muted); flex: 1; }
+  .links a { color: var(--accent); font-size: 12px; text-decoration: none; margin-left: 10px; }
+  .links a:hover { text-decoration: underline; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); display: inline-block; margin-right: 6px; }
+  .dot.err { background: #ef4444; }
+  .chip { background: var(--card); color: var(--text); border: 1px solid var(--line); border-radius: 999px; padding: 4px 11px; font: inherit; font-size: 12px; cursor: pointer; white-space: nowrap; }
+  .chip:hover { border-color: var(--muted); }
+  .chip.on { background: var(--accent); color: #0b1016; border-color: var(--accent); font-weight: 600; }
+  .wtbtn { background: var(--hot); color: #0b1016; border: 0; border-radius: 999px; padding: 6px 14px; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; white-space: nowrap; }
+  section { padding: 12px 16px; border-bottom: 1px solid var(--line); }
+  section h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 8px; font-weight: 600; }
+  #filters { display: none; background: #0f1720; }
+  #filters.show { display: grid; gap: 10px; }
+  #filters label { display: grid; gap: 4px; font-size: 12px; color: var(--muted); }
+  #filters .inline { display: flex; align-items: center; gap: 8px; color: var(--text); font-size: 13px; }
+  #filters input[type=number], #filters select { background: var(--card); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; font: inherit; font-size: 13px; width: 100%; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .row { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; padding: 9px 10px; border-radius: 8px; cursor: pointer; border: 1px solid transparent; }
+  .row:hover { background: var(--card); }
+  .row.sel { background: var(--card); border-color: var(--accent); }
+  .row.over { border-left: 3px solid var(--hot); }
+  .row b { font-size: 14px; }
+  .row .r { text-align: right; font-variant-numeric: tabular-nums; }
+  .row .nm { display: flex; align-items: center; gap: 8px; }
+  .sub { color: var(--muted); font-size: 12px; }
+  .empty { color: var(--muted); font-size: 13px; padding: 6px 2px; }
+  #detail { display: none; }
+  #detail.show { display: block; }
+  .photo { width: 100%; aspect-ratio: 16/10; object-fit: cover; border-radius: 8px; background: var(--card); display: block; }
+  .credit { font-size: 10px; color: var(--muted); margin: 3px 0 10px; }
+  .route { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px; margin: 6px 0 12px; }
+  .route .code { font-size: 26px; font-weight: 700; letter-spacing: .03em; }
+  .route .city { font-size: 12px; color: var(--muted); }
+  .route .to { text-align: right; }
+  .route .arrow { color: var(--accent); font-size: 20px; }
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .stat { background: var(--card); border-radius: 8px; padding: 8px 10px; }
+  .stat .k { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+  .stat .v { font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin-top: 12px; font-size: 13px; }
+  .kv span:nth-child(odd) { color: var(--muted); }
+  .title { display: flex; align-items: baseline; gap: 8px; }
+  .title b { font-size: 18px; }
+  .close { margin-left: auto; background: none; border: 1px solid var(--line); color: var(--muted); border-radius: 6px; padding: 2px 8px; cursor: pointer; font: inherit; }
+  .legend { position: absolute; bottom: 18px; left: 12px; z-index: 500; background: rgba(17,25,35,.9); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 11px; color: var(--muted); }
+  .legend .bar { width: 160px; height: 8px; border-radius: 4px; margin: 4px 0 2px; }
+  .legend .ticks { display: flex; justify-content: space-between; }
+  #raintime { margin-top: 6px; display: none; }
+  .plane { transition: transform .3s; }
+  .tourbar { height: 3px; background: var(--accent); width: 0; }
+  #side > .tourbar { position: sticky; top: 0; z-index: 2; }
+  .tourbar.run { animation: fill linear forwards; }
+  @keyframes fill { from { width: 0 } to { width: 100% } }
+  .apt { background: #0b1016; border: 2px solid #e6edf3; color: #e6edf3; border-radius: 6px; font: 700 10px/1 sans-serif; padding: 3px 4px; white-space: nowrap; }
+  .leaflet-tooltip.tag { background: rgba(17,25,35,.92); color: var(--text); border: 1px solid var(--line); border-radius: 8px; font-size: 11px; padding: 4px 7px; box-shadow: 0 2px 8px rgba(0,0,0,.4); line-height: 1.35; }
+  .leaflet-tooltip.tag.sel { border-color: var(--accent); z-index: 1000; }
+  .leaflet-tooltip.tag::before { display: none; }
+  .tg-top { display: flex; align-items: center; gap: 6px; }
+  .tg-top b { font-size: 12px; }
+  .tg-dim { color: var(--muted); }
+  .logo { background: #fff; border-radius: 4px; padding: 2px 4px; height: 18px; display: inline-flex; align-items: center; flex: none; }
+  .logo img { max-height: 14px; max-width: 64px; display: block; }
+  .logo.big { height: 30px; padding: 4px 8px; border-radius: 6px; }
+  .logo.big img { max-height: 22px; max-width: 120px; }
+  .logo.huge { height: 44px; padding: 6px 12px; border-radius: 8px; }
+  .logo.huge img { max-height: 32px; max-width: 180px; }
+  .home-icon { font-size: 20px; text-shadow: 0 0 6px #000; }
+
+  /* "What's that plane?" overlay */
+  #wt { position: fixed; inset: 0; z-index: 2000; background: rgba(5,8,12,.72); display: none; align-items: center; justify-content: center; padding: 16px; }
+  #wt.show { display: flex; }
+  .wtcard { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; width: min(560px, 100%); max-height: 100%; overflow-y: auto; padding: 20px; box-shadow: 0 20px 60px rgba(0,0,0,.6); }
+  .wtgrid { display: grid; grid-template-columns: 1fr 170px; gap: 16px; align-items: center; }
+  .wtbig { font-size: 34px; font-weight: 800; letter-spacing: .02em; line-height: 1.1; }
+  .wtroute { font-size: 20px; font-weight: 600; margin: 8px 0 2px; }
+  .wtlook { font-size: 22px; font-weight: 700; color: var(--hot); margin-top: 10px; }
+  .wtactions { display: flex; gap: 8px; margin-top: 16px; }
+  .sky text { fill: var(--muted); font-size: 11px; font-weight: 600; }
+  @media (max-width: 560px) { .wtgrid { grid-template-columns: 1fr; } .sky { max-width: 200px; margin: 0 auto; } }
+
+  /* Wall-screen mode */
+  #wallcard, #wallclock, #wallexit { display: none; }
+  body.wall #app { grid-template-columns: 1fr; }
+  body.wall #side, body.wall .legend { display: none; }
+  body.wall #wallcard { display: block; position: absolute; left: 24px; bottom: 24px; z-index: 600; width: min(720px, calc(100% - 48px));
+    background: rgba(13,19,27,.93); border: 1px solid var(--line); border-radius: 18px; overflow: hidden; box-shadow: 0 12px 40px rgba(0,0,0,.5); transition: opacity 2s; }
+  .wc-in { display: grid; grid-template-columns: 240px 1fr; }
+  .wc-in.nophoto { grid-template-columns: 1fr; }
+  .wc-photo { width: 100%; height: 100%; object-fit: cover; min-height: 170px; display: block; }
+  .wc-body { padding: 16px 20px; }
+  .wc-top { display: flex; align-items: center; gap: 12px; }
+  .wc-top b { font-size: 30px; letter-spacing: .02em; }
+  .wc-route { font-size: 22px; font-weight: 600; margin: 8px 0 10px; }
+  .wc-route .sub { font-size: 14px; }
+  .wc-stats { display: flex; gap: 22px; flex-wrap: wrap; font-size: 15px; }
+  .wc-stats .k { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+  .wc-stats .v { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  body.wall #wallclock { display: block; position: absolute; top: 18px; right: 24px; z-index: 600; text-align: right; text-shadow: 0 2px 8px #000; transition: opacity 2s; }
+  #wallclock .t { font-size: 44px; font-weight: 300; font-variant-numeric: tabular-nums; line-height: 1; }
+  #wallclock .c { color: var(--muted); font-size: 14px; margin-top: 4px; }
+  body.wall #wallexit { display: block; position: absolute; top: 18px; left: 60px; z-index: 600; }
+  body.wall .leaflet-tooltip.tag { font-size: 13px; }
+  body.wall.night #map { filter: brightness(.5); }
+  body.wall.night #wallcard, body.wall.night #wallclock { opacity: .6; }
+  @media (max-width: 800px) {
+    #app { grid-template-columns: 1fr; grid-template-rows: 55vh 45vh; }
+    #side { border-left: 0; border-top: 1px solid var(--line); }
+    .wc-in { grid-template-columns: 1fr; } .wc-photo { display: none; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="mapwrap">
+    <div id="map"></div>
+    <div class="legend">Altitude (ft)
+      <div class="bar" id="legendbar"></div>
+      <div class="ticks"><span>0</span><span>10k</span><span>20k</span><span>30k</span><span>40k+</span></div>
+      <div id="raintime"></div>
+    </div>
+    <div id="wallclock"><div class="t" id="clock"></div><div class="c" id="wallcount"></div></div>
+    <a id="wallexit" class="chip" href="./">✕ Exit wall mode</a>
+    <div id="wallcard"><div class="tourbar"></div><div id="wallinner"></div></div>
+  </div>
+  <aside id="side">
+    <header>
+      <div class="hrow"><h1>✈ Overhead Flights</h1><button id="wtbtn" class="wtbtn" title="Which plane is closest to straight overhead right now?">What's that plane?</button></div>
+      <div class="hrow">
+        <button id="tagbtn" class="chip" title="Labels next to each aircraft">Labels: full</button>
+        <button id="pathbtn" class="chip" title="Show every flight's track">Paths</button>
+        <button id="aheadbtn" class="chip" title="Dashed line showing where each plane will be in a few minutes">Ahead</button>
+        <button id="rainbtn" class="chip" title="Rain radar">Rain</button>
+        <button id="filterbtn" class="chip" title="Filter which aircraft are shown">Filters</button>
+        <button id="tourbtn" class="chip" title="Cycle through every flight">▶ Tour</button>
+      </div>
+      <div class="hrow"><span id="status"><span class="dot"></span>connecting…</span><span class="links"><a href="stats" target="_blank">Stats ↗</a><a href="wall" target="_blank">Wall mode ↗</a></span></div>
+    </header>
+    <div class="tourbar"></div>
+    <section id="filters">
+      <label class="inline"><input type="checkbox" id="f-ground"> Hide aircraft on the ground</label>
+      <div class="two">
+        <label>Min altitude (ft)<input type="number" id="f-min" min="0" step="1000" placeholder="any"></label>
+        <label>Max altitude (ft)<input type="number" id="f-max" min="0" step="1000" placeholder="any"></label>
+      </div>
+      <label><span id="f-apt-label">Airport traffic</span><select id="f-apt">
+        <option value="">All traffic</option><option value="arr">Arrivals only</option>
+        <option value="dep">Departures only</option><option value="both">Arrivals + departures</option>
+        <option value="none">Exclude this airport</option></select></label>
+      <label>Airline<select id="f-airline"><option value="">All airlines</option></select></label>
+      <div><button id="f-reset" class="chip">Reset filters</button></div>
+    </section>
+    <section id="detail"></section>
+    <section><h2 id="listhead">Aircraft nearby</h2><div id="list"></div></section>
+    <section><h2 id="passhead">Passed overhead today</h2><div id="passes"></div></section>
+  </aside>
+</div>
+<div id="wt"><div class="wtcard" id="wtcard"></div></div>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const store = { get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : v; } catch { return d; } },
+                set(k, v) { try { localStorage.setItem(k, v); } catch {} } };
+const WALL = /\/wall\/?$/.test(location.pathname) || new URLSearchParams(location.search).has("wall");
+if (WALL) document.body.classList.add("wall");
+
+let CFG, map, selected = null, trailLayer = null, routeLayer = null;
+let allFlights = [], lastFlights = [], detail = null;
+const markers = new Map();
+
+// altitude colour ramp: ground orange -> yellow -> green -> cyan -> blue -> violet
+const STOPS = [[0, [249,115,22]], [5000, [250,204,21]], [12000, [34,197,94]], [22000, [56,189,248]], [32000, [99,102,241]], [42000, [192,132,252]]];
+function altColor(ft) {
+  ft = Math.max(0, ft || 0);
+  for (let i = 1; i < STOPS.length; i++) {
+    if (ft <= STOPS[i][0]) {
+      const [a0, c0] = STOPS[i-1], [a1, c1] = STOPS[i], t = (ft - a0) / (a1 - a0);
+      return `rgb(${c0.map((v, j) => Math.round(v + (c1[j] - v) * t)).join(",")})`;
+    }
+  }
+  return `rgb(${STOPS.at(-1)[1].join(",")})`;
+}
+$("#legendbar").style.background = `linear-gradient(90deg, ${[0,5000,10000,15000,20000,25000,30000,35000,40000].map(altColor).join(",")})`;
+
+const fmtAlt = ft => ft ? ft.toLocaleString() + " ft" : "ground";
+const fmtTime = ts => ts ? new Date(ts * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—";
+const vsArrow = v => v > 300 ? "▲" : v < -300 ? "▼" : "";
+const lookText = f => f.on_ground ? "on the ground" : f.elevation_deg <= 0 ? `${f.look_dir}, below horizon` : `look ${f.look_dir}, ${Math.round(f.elevation_deg)}° up`;
+
+function planeIcon(f, isSel) {
+  const c = altColor(f.altitude_ft), s = isSel ? 34 : WALL ? 30 : 26;
+  const svg = `<svg class="plane" width="${s}" height="${s}" viewBox="0 0 24 24" style="transform:rotate(${f.heading}deg)">
+    <path d="M12 2c.8 0 1.3.9 1.3 2v5.2l7.7 4.6v2l-7.7-2.4v4.8l2.2 1.7v1.6L12 20.6l-3.5.9v-1.6l2.2-1.7v-4.8L3 15.8v-2l7.7-4.6V4c0-1.1.5-2 1.3-2z"
+      fill="${c}" stroke="${isSel ? "#fff" : "#0b1016"}" stroke-width="${isSel ? 1.4 : 1}"/></svg>`;
+  return L.divIcon({ html: svg, className: "", iconSize: [s, s], iconAnchor: [s/2, s/2] });
+}
+
+// airline logo: FR24's operator logo by ICAO code, falling back to an IATA-based logo, else hidden
+function logo(f, size) {
+  const icao = CFG.data_source === "fr24_web" ? f.airline_icao : null, iata = f.airline_iata;   // FR24's logo CDN only in FR24 mode
+  if (!icao && !iata) return "";
+  const a = icao ? `https://www.flightradar24.com/static/images/data/operators/${encodeURIComponent(icao)}_logo0.png` : "";
+  const b = iata ? `https://pics.avs.io/120/40/${encodeURIComponent(iata)}.png` : "";
+  const first = a || b, second = a ? b : "";
+  const onerr = second ? `if(!this.dataset.f){this.dataset.f=1;this.src='${second}'}else{this.parentNode.remove()}` : "this.parentNode.remove()";
+  return `<span class="logo ${size || ""}"><img src="${first}" alt="${esc(f.airline || icao || "")}" onerror="${onerr}"></span>`;
+}
+
+let tagMode = WALL ? "compact" : store.get("tags", "full");
+function label(f) {
+  const alt = f.altitude_ft ? f.altitude_ft.toLocaleString() + " ft" : "on ground";
+  const id = esc(f.number || f.callsign || f.registration);
+  if (tagMode === "compact") return `<div class="tg-top">${logo(f)}<b>${id}</b><span class="tg-dim">${alt}</span></div>`;
+  return `<div class="tg-top">${logo(f)}<b>${id}</b><span class="tg-dim">${esc(f.aircraft_code || "")}</span></div>
+    <div>${esc(f.origin || "?")} → ${esc(f.destination || "?")}</div>
+    <div class="tg-dim"><span style="color:${altColor(f.altitude_ft)}">${alt}</span> ${vsArrow(f.vspeed_fpm)} · ${f.speed_kt} kt</div>`;
+}
+
+// ---------- filters ----------
+const FILTER_DEFAULT = { ground: false, min: "", max: "", apt: "", airline: "" };
+let F = { ...FILTER_DEFAULT };
+try { F = { ...FILTER_DEFAULT, ...JSON.parse(store.get("filters", "{}")) }; } catch {}
+const filtersActive = () => F.ground || F.min !== "" || F.max !== "" || F.apt || F.airline;
+function visible(f) {
+  if (WALL) return true;
+  if (F.ground && f.on_ground) return false;
+  if (F.min !== "" && (f.altitude_ft || 0) < +F.min) return false;
+  if (F.max !== "" && (f.altitude_ft || 0) > +F.max) return false;
+  const apt = CFG.airports?.[0]?.iata;
+  if (F.apt && apt) {
+    const arr = f.destination === apt, dep = f.origin === apt;
+    if (F.apt === "arr" && !arr) return false;
+    if (F.apt === "dep" && !dep) return false;
+    if (F.apt === "both" && !arr && !dep) return false;
+    if (F.apt === "none" && (arr || dep)) return false;
+  }
+  if (F.airline && (f.airline || f.airline_icao || "") !== F.airline) return false;
+  return true;
+}
+function setupFilters() {
+  const apt = CFG.airports?.[0];
+  if (apt) $("#f-apt-label").textContent = `${apt.name} (${apt.iata}) traffic`;
+  else $("#f-apt").closest("label").style.display = "none";
+  $("#f-ground").checked = F.ground; $("#f-min").value = F.min; $("#f-max").value = F.max; $("#f-apt").value = F.apt;
+  const changed = () => {
+    F = { ground: $("#f-ground").checked, min: $("#f-min").value, max: $("#f-max").value, apt: $("#f-apt").value, airline: $("#f-airline").value };
+    store.set("filters", JSON.stringify(F));
+    applyFlights();
+  };
+  for (const id of ["#f-ground", "#f-min", "#f-max", "#f-apt", "#f-airline"]) $(id).addEventListener("input", changed);
+  $("#f-reset").onclick = () => { F = { ...FILTER_DEFAULT }; store.set("filters", "{}"); setupFilters(); applyFlights(); };
+  $("#filterbtn").onclick = () => { $("#filters").classList.toggle("show"); };
+}
+function refreshAirlineOptions() {
+  const names = [...new Set(allFlights.map(f => f.airline || f.airline_icao).filter(Boolean))];
+  if (F.airline && !names.includes(F.airline)) names.push(F.airline);
+  names.sort();
+  const sel = $("#f-airline"), html = `<option value="">All airlines</option>` + names.map(n => `<option>${esc(n)}</option>`).join("");
+  if (sel.dataset.html !== html) { sel.innerHTML = html; sel.dataset.html = html; }
+  sel.value = F.airline;
+  $("#filterbtn").classList.toggle("on", !!filtersActive());
+}
+
+// ---------- start-up ----------
+async function init() {
+  CFG = await (await fetch("api/config")).json();
+  map = L.map("map", { zoomControl: true });
+  const esri = "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/";
+  L.tileLayer(esri + "World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}", { attribution: "Tiles &copy; Esri · Radar &copy; RainViewer · " + (CFG.data_source === "fr24_web" ? "Flights: FlightRadar24" : 'Aircraft: <a href="https://adsb.lol" target="_blank">adsb.lol</a> (ODbL) · Routes: adsbdb'), maxZoom: 16 }).addTo(map);
+  map.createPane("labels"); map.getPane("labels").style.zIndex = 450; map.getPane("labels").style.pointerEvents = "none";
+  L.tileLayer(esri + "World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}", { maxZoom: 16, pane: "labels" }).addTo(map);
+  const home = [CFG.latitude, CFG.longitude];
+  // open zoomed to fit the whole search area once; after that the map is only moved by you
+  map.fitBounds(L.latLng(home).toBounds(CFG.radius_km * 2000), { padding: [10, 10] });
+  L.circle(home, { radius: CFG.overhead_km * 1000, color: "#f97316", weight: 1, fillOpacity: .08 }).addTo(map)
+    .bindTooltip(`Overhead zone (${CFG.overhead_km} km)`);
+  for (const km of [10, 25, 50, 100].filter(k => k <= CFG.radius_km))
+    L.circle(home, { radius: km * 1000, color: "#38bdf8", weight: 1, opacity: .25, fill: false, dashArray: "4 6", interactive: false }).addTo(map);
+  L.marker(home, { icon: L.divIcon({ html: '<div class="home-icon">🏠</div>', className: "", iconSize: [22, 22], iconAnchor: [11, 11] }) })
+    .addTo(map).bindTooltip(CFG.home_name);
+  for (const a of CFG.airports || [])
+    L.marker([a.lat, a.lon], { icon: L.divIcon({ html: `<div class="apt">✈ ${esc(a.iata)}</div>`, className: "", iconSize: [46, 18], iconAnchor: [23, 9] }) })
+      .addTo(map).bindTooltip(esc(a.name));
+  map.on("click", () => { if (!WALL) { stopTour(); select(null); } });
+  window.addEventListener("resize", () => map.invalidateSize());
+
+  const toggle = (btn, key, get, set, after) => {
+    const paint = () => $(btn).classList.toggle("on", get());
+    paint();
+    $(btn).onclick = () => { set(!get()); store.set(key, get() ? "1" : "0"); paint(); after(); };
+  };
+  toggle("#pathbtn", "paths", () => pathsOn, v => pathsOn = v, drawPaths);
+  toggle("#aheadbtn", "ahead", () => aheadOn, v => aheadOn = v, drawAhead);
+  toggle("#rainbtn", "rain", () => rainOn, v => rainOn = v, drawRain);
+  const tagLabel = () => $("#tagbtn").textContent = "Labels: " + tagMode;
+  tagLabel();
+  $("#tagbtn").onclick = () => {
+    tagMode = { full: "compact", compact: "off", off: "full" }[tagMode];
+    store.set("tags", tagMode); tagLabel();
+    for (const m of markers.values()) { m.unbindTooltip(); m._lastLabel = null; }
+    drawMarkers(lastFlights);
+  };
+  $("#tourbtn").onclick = () => tourOn ? stopTour() : startTour();
+  $("#wtbtn").onclick = whatsThat;
+  $("#wt").onclick = e => { if (e.target.id === "wt") $("#wt").classList.remove("show"); };
+  document.addEventListener("keydown", e => { if (e.key === "Escape") $("#wt").classList.remove("show"); });
+  setupFilters();
+
+  if (WALL) { startTour(); tickClock(); setInterval(tickClock, 1000 * 20); }
+  else if (store.get("tour", "0") === "1") startTour();
+  drawRain(); setInterval(drawRain, 10 * 60 * 1000);
+  poll();
+  setInterval(poll, CFG.refresh_seconds * 1000);
+  setInterval(() => selected && loadDetail(selected), 15000);
+}
+
+async function poll() {
+  let data;
+  try { data = await (await fetch("api/flights")).json(); }
+  catch { $("#status").innerHTML = '<span class="dot err"></span>app not responding'; return; }
+  const age = data.fetched ? Math.round(Date.now() / 1000 - data.fetched) : null;
+  $("#status").innerHTML = data.error
+    ? `<span class="dot err"></span>feed error — retrying`
+    : `<span class="dot"></span>${age === null ? "loading…" : "updated " + age + "s ago"}`;
+  if (data.error) console.warn(data.error);
+  allFlights = data.flights;
+  drawPasses(data.passes_today);
+  applyFlights();
+  drawPaths();
+}
+
+function applyFlights() {
+  refreshAirlineOptions();
+  lastFlights = allFlights.filter(visible);
+  drawMarkers(lastFlights);
+  drawList(lastFlights);
+  drawAhead();
+  if (WALL) $("#wallcount").textContent = `${allFlights.filter(f => !f.on_ground).length} aircraft in the air within ${CFG.radius_km} km`;
+  if (selected) {
+    const f = lastFlights.find(x => x.id === selected);
+    if (f) updateLive(f); else select(null);
+  }
+}
+
+function drawMarkers(flights) {
+  const live = new Set(flights.map(f => f.id));
+  for (const [id, m] of markers) if (!live.has(id)) { map.removeLayer(m); markers.delete(id); }
+  for (const f of flights) {
+    let m = markers.get(f.id);
+    if (!m) {
+      m = L.marker([f.lat, f.lon]).addTo(map).on("click", e => { L.DomEvent.stopPropagation(e); pick(f.id); });
+      markers.set(f.id, m);
+    }
+    m.setLatLng([f.lat, f.lon]).setIcon(planeIcon(f, f.id === selected));
+    const showTag = tagMode !== "off" || f.id === selected;
+    if (showTag) {
+      const cls = "tag" + (f.id === selected ? " sel" : "");
+      const tt = m.getTooltip(), html = label(f);
+      if (!tt || tt.options.className !== cls) {
+        m.unbindTooltip().bindTooltip(html, { permanent: true, direction: "right", offset: [14, 0], className: cls });
+      } else if (m._lastLabel !== html) m.setTooltipContent(html);
+      m._lastLabel = html;
+    } else if (m.getTooltip()) { m.unbindTooltip(); m._lastLabel = null; }
+    m.setZIndexOffset(f.id === selected ? 1000 : 0);
+  }
+}
+
+// a click on a plane or list row (keeps the tour going from that flight)
+function pick(id) {
+  select(id, true);
+  if (tourOn) { tourQueue = tourQueue.filter(x => x !== id); clearTimeout(tourTimer); restartBar(); tourTimer = setTimeout(tourStep, (CFG.tour_seconds || 5) * 1000); }
+}
+
+function drawList(flights) {
+  const n = allFlights.length;
+  $("#listhead").textContent = filtersActive()
+    ? `Aircraft nearby (${flights.length} of ${n} shown — filtered)`
+    : `Aircraft nearby (${n} within ${CFG.radius_km} km)`;
+  $("#list").innerHTML = flights.length ? flights.map(f => {
+    const route = `${esc(f.origin_city || f.origin || "?")} → ${esc(f.destination_city || f.destination || "?")}`;
+    const near = f.cpa_min != null && f.cpa_km <= CFG.overhead_km ? ` · <span style="color:var(--hot)">overhead in ~${Math.max(1, Math.round(f.cpa_min))} min</span>` : "";
+    return `<div class="row ${f.id === selected ? "sel" : ""} ${f.distance_km <= CFG.overhead_km ? "over" : ""}" data-id="${f.id}">
+      <span class="nm">${logo(f)}<b>${esc(f.number || f.callsign || f.registration)}</b></span>
+      <span class="r" style="color:${altColor(f.altitude_ft)}">${fmtAlt(f.altitude_ft)} ${vsArrow(f.vspeed_fpm)}</span>
+      <span class="sub">${esc(f.airline || f.airline_icao || "Private / unknown")} · ${route}</span>
+      <span class="sub r">${f.distance_km} km</span>
+      <span class="sub">${esc(f.aircraft || f.aircraft_code || "")}${near}</span>
+      <span class="sub r">${esc(lookText(f))}</span>
+    </div>`;
+  }).join("") : `<div class="empty">${filtersActive() ? "No aircraft match your filters." : `No aircraft within ${CFG.radius_km} km right now.`}</div>`;
+  document.querySelectorAll("#list .row").forEach(r => r.onclick = () => pick(r.dataset.id));
+}
+
+function drawPasses(passes) {
+  $("#passhead").textContent = `Passed overhead today (${passes.length})`;
+  $("#passes").innerHTML = passes.length ? passes.map(p => `
+    <div class="row" style="cursor:default">
+      <b>${esc(p.flight || p.callsign)}</b><span class="r sub">${esc(p.time.slice(11, 16))}</span>
+      <span class="sub">${esc(p.airline || "")} · ${esc(p.from || "?")} → ${esc(p.to || "?")}</span>
+      <span class="sub r">${fmtAlt(p.altitude_ft)} · ${p.distance_km} km</span>
+    </div>`).join("") : `<div class="empty">Nothing within ${CFG.overhead_km} km yet today.</div>`;
+}
+
+// ---------- all-paths layer ----------
+let pathsOn = !WALL && store.get("paths", "0") === "1", pathsLayer = null;
+async function drawPaths() {
+  if (!pathsOn) { if (pathsLayer) { map.removeLayer(pathsLayer); pathsLayer = null; } return; }
+  let all;
+  try { all = await (await fetch("api/paths")).json(); } catch { return; }
+  if (!pathsOn) return;
+  const show = new Set(lastFlights.map(f => f.id));
+  const g = L.layerGroup();
+  for (const [id, pts] of Object.entries(all)) {
+    if (id === selected || !show.has(id) || pts.length < 2) continue;   // the selected flight has its own bold track
+    // split into runs of similar altitude so each run is one coloured polyline
+    let run = [[pts[0][0], pts[0][1]]], band = Math.floor(pts[0][2] / 2500);
+    for (let i = 1; i < pts.length; i++) {
+      const b = Math.floor(pts[i][2] / 2500);
+      run.push([pts[i][0], pts[i][1]]);
+      if (b !== band || i === pts.length - 1) {
+        L.polyline(run, { color: altColor(band * 2500 + 1250), weight: 2, opacity: .55, interactive: false }).addTo(g);
+        run = [[pts[i][0], pts[i][1]]]; band = b;
+      }
+    }
+  }
+  if (pathsLayer) map.removeLayer(pathsLayer);
+  pathsLayer = g.addTo(map);
+  pathsLayer.eachLayer(l => l.bringToBack());
+}
+
+// ---------- "where it's going" projection lines ----------
+let aheadOn = WALL || store.get("ahead", "0") === "1", aheadLayer = null;
+function destPoint(lat, lon, brgDeg, km) {
+  const R = 6371, r = Math.PI / 180, d = km / R, b = brgDeg * r, p1 = lat * r, l1 = lon * r;
+  const p2 = Math.asin(Math.sin(p1) * Math.cos(d) + Math.cos(p1) * Math.sin(d) * Math.cos(b));
+  const l2 = l1 + Math.atan2(Math.sin(b) * Math.sin(d) * Math.cos(p1), Math.cos(d) - Math.sin(p1) * Math.sin(p2));
+  return [p2 / r, l2 / r];
+}
+function drawAhead() {
+  if (aheadLayer) { map.removeLayer(aheadLayer); aheadLayer = null; }
+  if (!aheadOn) return;
+  const mins = CFG.ahead_minutes || 5;
+  aheadLayer = L.layerGroup();
+  for (const f of lastFlights) {
+    if (f.on_ground || f.speed_kt < 50) continue;
+    const end = destPoint(f.lat, f.lon, f.heading, f.speed_kt * 1.852 * mins / 60);
+    const overSoon = f.cpa_min != null && f.cpa_min <= mins && f.cpa_km <= CFG.overhead_km;
+    L.polyline([[f.lat, f.lon], end], {
+      color: overSoon ? "#f97316" : altColor(f.altitude_ft), weight: overSoon ? 3 : 1.5,
+      opacity: overSoon ? .95 : .7, dashArray: "5 6", interactive: false,
+    }).addTo(aheadLayer);
+    L.circleMarker(end, { radius: 2.5, color: overSoon ? "#f97316" : altColor(f.altitude_ft), weight: 1, fillOpacity: 1, interactive: false }).addTo(aheadLayer);
+  }
+  aheadLayer.addTo(map);
+}
+
+// ---------- rain radar (RainViewer, free) ----------
+let rainOn = store.get("rain", "0") === "1", rainLayer = null;
+async function drawRain() {
+  if (!rainOn) { if (rainLayer) { map.removeLayer(rainLayer); rainLayer = null; } $("#raintime").style.display = "none"; return; }
+  let j;
+  try { j = await (await fetch("https://api.rainviewer.com/public/weather-maps.json")).json(); } catch { return; }
+  const frame = j?.radar?.past?.at(-1);
+  if (!frame || !rainOn) return;
+  const layer = L.tileLayer(`${j.host}${frame.path}/256/{z}/{x}/{y}/2/1_1.png`, { opacity: .6, maxNativeZoom: 7, maxZoom: 16, zIndex: 5 });
+  if (rainLayer) map.removeLayer(rainLayer);
+  rainLayer = layer.addTo(map);
+  $("#raintime").style.display = "block";
+  $("#raintime").textContent = "Rain radar " + fmtTime(frame.time);
+}
+
+// ---------- selection + detail ----------
+function select(id, manual = false) {
+  selected = id; detail = null;
+  if (trailLayer) { map.removeLayer(trailLayer); trailLayer = null; }
+  if (routeLayer) { map.removeLayer(routeLayer); routeLayer = null; }
+  drawMarkers(lastFlights); drawList(lastFlights);
+  if (!id) { $("#detail").classList.remove("show"); $("#wallinner").innerHTML = ""; return; }
+  $("#detail").classList.add("show");
+  const f = lastFlights.find(x => x.id === id);
+  if (f) updateLive(f); else $("#detail").innerHTML = '<div class="empty">Loading flight…</div>';
+  loadDetail(id, manual);
+}
+
+// great-circle points between two coordinates, for the dashed "rest of route" line
+function gcPath(a, b, n = 64) {
+  const r = Math.PI / 180, [la1, lo1, la2, lo2] = [a[0]*r, a[1]*r, b[0]*r, b[1]*r];
+  const d = 2 * Math.asin(Math.sqrt(Math.sin((la2-la1)/2)**2 + Math.cos(la1)*Math.cos(la2)*Math.sin((lo2-lo1)/2)**2));
+  if (!d) return [a, b];
+  const pts = [];
+  for (let i = 0; i <= n; i++) {
+    const f = i / n, A = Math.sin((1-f)*d) / Math.sin(d), B = Math.sin(f*d) / Math.sin(d);
+    const x = A*Math.cos(la1)*Math.cos(lo1) + B*Math.cos(la2)*Math.cos(lo2);
+    const y = A*Math.cos(la1)*Math.sin(lo1) + B*Math.cos(la2)*Math.sin(lo2);
+    const z = A*Math.sin(la1) + B*Math.sin(la2);
+    pts.push([Math.atan2(z, Math.hypot(x, y)) / r, Math.atan2(y, x) / r]);
+  }
+  return pts;
+}
+
+async function loadDetail(id, manual = false) {
+  let d;
+  try { d = await (await fetch("api/flight/" + id + (manual ? "?manual=1" : ""))).json(); } catch { return; }
+  if (selected !== id) return;
+  detail = d;
+  // flight track, coloured by altitude
+  if (trailLayer) map.removeLayer(trailLayer);
+  trailLayer = L.layerGroup();
+  const t = d.trail || [];
+  for (let i = 1; i < t.length; i++)
+    L.polyline([[t[i-1][0], t[i-1][1]], [t[i][0], t[i][1]]], { color: altColor(t[i][2]), weight: 3, opacity: .9 }).addTo(trailLayer);
+  trailLayer.addTo(map);
+  // remaining route to destination
+  if (routeLayer) map.removeLayer(routeLayer);
+  const f = lastFlights.find(x => x.id === id);
+  if (f && d.destination?.lat != null) {
+    routeLayer = L.polyline(gcPath([f.lat, f.lon], [d.destination.lat, d.destination.lon]), { color: "#e6edf3", weight: 1.5, opacity: .5, dashArray: "6 6" }).addTo(map);
+  }
+  // (the map deliberately keeps whatever centre/zoom you've set — selecting or touring never moves it)
+  if (f) updateLive(f);
+}
+
+// aircraft photo with the photographer credit (planespotters.net asks for a credit + link back)
+function photoBlock(d, f) {
+  if (!d.photo) return "";
+  const img = `<img class="photo" src="${esc(d.photo)}" alt="Photo of ${esc(f.registration)}">`;
+  const credit = d.photo_link
+    ? `Photo © ${esc(d.photo_credit || "unknown")} · <a href="${esc(d.photo_link)}" target="_blank" style="color:inherit">Planespotters.net</a>`
+    : `Photo © ${esc(d.photo_credit || "JetPhotos")}`;
+  return (d.photo_link ? `<a href="${esc(d.photo_link)}" target="_blank">${img}</a>` : img) + `<div class="credit">${credit}</div>`;
+}
+
+function updateLive(f) {
+  const d = detail || {};
+  const o = d.origin || {}, de = d.destination || {};
+  const cpa = f.cpa_min != null
+    ? `${f.cpa_km} km from you in ~${Math.max(1, Math.round(f.cpa_min))} min`
+    : `moving away (now ${f.distance_km} km ${f.direction})`;
+  const oCode = esc(o.iata || f.origin || "???"), dCode = esc(de.iata || f.destination || "???");
+  const oCity = esc(o.city || o.name || f.origin_city || ""), dCity = esc(de.city || de.name || f.destination_city || "");
+  const airline = esc(d.airline || f.airline || f.airline_icao || "Private / unknown operator");
+  const elev = f.on_ground ? "—" : f.elevation_deg <= 0 ? "below" : Math.round(f.elevation_deg) + "° up";
+  $("#detail").innerHTML = `
+    <div class="title"><b>${esc(f.number || f.callsign)}</b><span class="sub">${esc(f.callsign)}</span>
+      <button class="close" onclick="stopTour(); select(null)">✕</button></div>
+    <div style="display:flex;align-items:center;gap:10px;margin:4px 0 10px">${logo(f, "big")}<span class="sub">${airline}</span></div>
+    ${photoBlock(d, f)}
+    <div class="route">
+      <div><div class="code">${oCode}</div><div class="city">${oCity}</div></div>
+      <div class="arrow">✈</div>
+      <div class="to"><div class="code">${dCode}</div><div class="city">${dCity}</div></div>
+    </div>
+    <div class="stats">
+      <div class="stat"><div class="k">Altitude</div><div class="v" style="color:${altColor(f.altitude_ft)}">${f.altitude_ft ? f.altitude_ft.toLocaleString() : "0"} ft</div></div>
+      <div class="stat"><div class="k">Speed</div><div class="v">${f.speed_kt} kt</div></div>
+      <div class="stat"><div class="k">Climb</div><div class="v">${f.vspeed_fpm > 0 ? "+" : ""}${f.vspeed_fpm} fpm</div></div>
+      <div class="stat"><div class="k">Distance</div><div class="v">${f.distance_km} km</div></div>
+      <div class="stat"><div class="k">Look</div><div class="v">${esc(f.look_dir)}</div></div>
+      <div class="stat"><div class="k">Angle</div><div class="v">${elev}</div></div>
+    </div>
+    <div class="kv">
+      <span>Aircraft</span><span>${esc(d.aircraft || f.aircraft || f.aircraft_code || "—")}</span>
+      <span>Registration</span><span>${esc(f.registration || "—")}</span>
+      <span>From</span><span>${esc(o.name || f.origin_city || f.origin || "—")}${o.country ? ", " + esc(o.country) : ""}</span>
+      <span>To</span><span>${esc(de.name || f.destination_city || f.destination || "—")}${de.country ? ", " + esc(de.country) : ""}</span>
+      ${d.dep_actual || d.dep_scheduled ? `<span>Departed</span><span>${fmtTime(d.dep_actual)} <span class="sub">(sched ${fmtTime(d.dep_scheduled)})</span></span>` : ""}
+      ${d.arr_estimated || d.arr_scheduled ? `<span>Arrives</span><span>${fmtTime(d.arr_estimated || d.arr_scheduled)} <span class="sub">${d.arr_estimated ? "estimated" : "scheduled"}</span></span>` : ""}
+      <span>Heading</span><span>${f.heading}°</span>
+      <span>Closest pass</span><span>${cpa}</span>
+      ${f.squawk ? `<span>Squawk</span><span>${esc(f.squawk)}</span>` : ""}
+    </div>`;
+  if (WALL) {
+    $("#wallinner").innerHTML = `<div class="wc-in ${d.photo ? "" : "nophoto"}">
+      ${d.photo ? `<img class="wc-photo" src="${esc(d.photo)}" alt="">` : ""}
+      <div class="wc-body">
+        <div class="wc-top">${logo(f, "big")}<b>${esc(f.number || f.callsign)}</b><span class="sub">${airline}</span></div>
+        <div class="wc-route">${oCode} → ${dCode} <span class="sub">${oCity}${oCity && dCity ? " to " : ""}${dCity}</span></div>
+        <div class="wc-stats">
+          <div><div class="k">Altitude</div><div class="v" style="color:${altColor(f.altitude_ft)}">${fmtAlt(f.altitude_ft)}</div></div>
+          <div><div class="k">Speed</div><div class="v">${f.speed_kt} kt</div></div>
+          <div><div class="k">Aircraft</div><div class="v">${esc(f.aircraft || f.aircraft_code || "—")}</div></div>
+          <div><div class="k">Where to look</div><div class="v">${esc(lookText(f))}</div></div>
+        </div>
+        ${d.photo && d.photo_credit ? `<div class="sub" style="margin-top:10px;font-size:11px">Photo © ${esc(d.photo_credit)}${d.photo_link ? " / Planespotters.net" : ""}</div>` : ""}
+      </div></div>`;
+  }
+}
+
+// ---------- "What's that plane?" ----------
+function skyDome(target) {
+  // looking up: centre = straight overhead, edge = horizon; north at the top, east on the right
+  const R = 70, c = 80, pos = f => {
+    const r = R * (90 - Math.max(0, f.elevation_deg)) / 90, b = f.bearing * Math.PI / 180;
+    return [c + r * Math.sin(b), c - r * Math.cos(b)];
+  };
+  const others = allFlights.filter(f => !f.on_ground && f.elevation_deg > 2 && f.id !== target.id).map(f => {
+    const [x, y] = pos(f); return `<circle cx="${x}" cy="${y}" r="3" fill="${altColor(f.altitude_ft)}" opacity=".55"/>`;
+  }).join("");
+  const [tx, ty] = pos(target);
+  return `<svg class="sky" viewBox="0 0 160 160" width="100%">
+    <circle cx="${c}" cy="${c}" r="${R}" fill="#0b1016" stroke="#243243"/>
+    <circle cx="${c}" cy="${c}" r="${R * 2/3}" fill="none" stroke="#243243" stroke-dasharray="3 4"/>
+    <circle cx="${c}" cy="${c}" r="${R / 3}" fill="none" stroke="#243243" stroke-dasharray="3 4"/>
+    <text x="${c}" y="8" text-anchor="middle">N</text><text x="155" y="${c + 4}" text-anchor="middle">E</text>
+    <text x="${c}" y="158" text-anchor="middle">S</text><text x="5" y="${c + 4}" text-anchor="middle">W</text>
+    ${others}
+    <line x1="${c}" y1="${c}" x2="${tx}" y2="${ty}" stroke="#f97316" stroke-width="1.5" stroke-dasharray="3 3"/>
+    <circle cx="${tx}" cy="${ty}" r="7" fill="#f97316" stroke="#fff" stroke-width="2"/>
+    <circle cx="${c}" cy="${c}" r="2" fill="#8b9bb0"/>
+  </svg><div class="sub" style="text-align:center">Sky view — centre is straight up</div>`;
+}
+async function whatsThat() {
+  const up = allFlights.filter(f => !f.on_ground && f.elevation_deg > 0).sort((a, b) => b.elevation_deg - a.elevation_deg);
+  const card = $("#wtcard");
+  $("#wt").classList.add("show");
+  if (!up.length) {
+    card.innerHTML = `<div class="wtbig">Nothing up there</div><p class="sub">No aircraft above your horizon within ${CFG.radius_km} km right now.</p>
+      <div class="wtactions"><button class="chip" onclick="$('#wt').classList.remove('show')">Close</button></div>`;
+    return;
+  }
+  const f = up[0];
+  const render = d => {
+    d = d || {};
+    const o = d.origin || {}, de = d.destination || {};
+    card.innerHTML = `
+      ${d.photo ? `<div style="margin-bottom:10px">${photoBlock(d, f)}</div>` : ""}
+      <div class="wtgrid"><div>
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">${logo(f, "huge")}</div>
+        <div class="wtbig">${esc(f.number || f.callsign)}</div>
+        <div class="sub" style="font-size:14px">${esc(d.airline || f.airline || "Private / unknown")} · ${esc(d.aircraft || f.aircraft || f.aircraft_code || "")}</div>
+        <div class="wtroute">${esc(o.city || f.origin_city || f.origin || "?")} → ${esc(de.city || f.destination_city || f.destination || "?")}</div>
+        <div class="sub" style="font-size:14px">${fmtAlt(f.altitude_ft)} ${vsArrow(f.vspeed_fpm)} · ${f.speed_kt} kt · ${f.distance_km} km away</div>
+        <div class="wtlook">Look ${esc(f.look_dir)}, ${Math.round(f.elevation_deg)}° up</div>
+      </div><div>${skyDome(f)}</div></div>
+      <div class="wtactions">
+        <button class="chip on" onclick="$('#wt').classList.remove('show'); stopTour(); select('${f.id}', true)">Show on map</button>
+        <button class="chip" onclick="$('#wt').classList.remove('show')">Close</button>
+      </div>`;
+  };
+  render(null);
+  try { render(await (await fetch("api/flight/" + f.id)).json()); } catch {}
+}
+
+// ---------- Tour mode: dwell on each flight, nearest first, then loop ----------
+let tourOn = false, tourTimer = null, tourQueue = [];
+function tourStep() {
+  if (!tourOn) return;
+  const live = new Set(lastFlights.map(f => f.id));
+  tourQueue = tourQueue.filter(id => live.has(id));           // drop flights that have left
+  if (!tourQueue.length) tourQueue = lastFlights.filter(f => !WALL || !f.on_ground).map(f => f.id); // new cycle: nearest first
+  if (tourQueue.length) select(tourQueue.shift());
+  restartBar();
+  tourTimer = setTimeout(tourStep, (CFG.tour_seconds || 5) * 1000);
+}
+function startTour() {
+  tourOn = true; clearTimeout(tourTimer);
+  $("#tourbtn").classList.add("on"); $("#tourbtn").textContent = "■ Touring";
+  if (!WALL) store.set("tour", "1");
+  if (!lastFlights.length) { tourTimer = setTimeout(startTour, 1000); return; }   // wait for the first feed
+  selected = null; tourQueue = []; tourStep();
+}
+function restartBar() {
+  document.querySelectorAll(".tourbar").forEach(b => {
+    b.classList.remove("run"); void b.offsetWidth;   // reflow so the animation restarts
+    b.style.animationDuration = (CFG.tour_seconds || 5) + "s";
+    b.classList.add("run");
+  });
+}
+function stopTour() {
+  if (WALL) return;
+  tourOn = false; clearTimeout(tourTimer);
+  document.querySelectorAll(".tourbar").forEach(b => b.classList.remove("run"));
+  $("#tourbtn").classList.remove("on"); $("#tourbtn").textContent = "▶ Tour";
+  store.set("tour", "0");
+}
+
+// ---------- wall clock + night dimming ----------
+function tickClock() {
+  const now = new Date();
+  $("#clock").textContent = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const [a, b] = CFG.night_dim || [22, 7], h = now.getHours();
+  const night = a > b ? (h >= a || h < b) : (h >= a && h < b);
+  document.body.classList.toggle("night", night);
+}
+
+init();
+</script>
+</body>
+</html>
