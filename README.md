@@ -60,6 +60,17 @@ The first run sets up a virtualenv. After that, the app opens at http://127.0.0.
 | use_paid_tracks | set to false to never spend the 40 credits a track lookup costs |
 | port | web port (default 8750) |
 
+### Adding your own FlightRadar24 API key (optional)
+An official FR24 API key fills in airline and airport names (1 credit each, cached permanently). It can also fetch tracks for flights you click when no other track is available (40 credits each).
+1. Get a key at [fr24api.flightradar24.com](https://fr24api.flightradar24.com), then copy the whole API token, including the part after the `|`.
+2. **Home Assistant add-on:** paste the token into **FlightRadar24 API key** on the add-on's Configuration tab, then save and restart. See [DOCS.md](overhead_flights/DOCS.md#adding-your-own-flightradar24-api-key-optional).
+3. **Desktop:** add the token to `config.json` next to `run.command`, then restart the app:
+   ```json
+   "fr24_api_key": "your-token-here",
+   "fr24_api_per_minute": 8
+   ```
+   `config.json` is listed in `.gitignore`, so the key never gets committed.
+
 ### Official API credit use
 Live positions always come from the free public feed, which costs no credits. The official key is only used for:
 - **Airline and airport names:** 1 credit each. They're saved in `names_cache.json`, so each one is looked up only once.

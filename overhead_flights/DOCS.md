@@ -23,6 +23,23 @@ History builds up for as long as the add-on runs.
 ## Wall-screen mode
 Open **Wall mode** for a full-screen, auto-touring view with a clock that dims at night. To show it on a tablet without logging in, set a host port for `8750/tcp` on the **Network** tab and open `http://<home-assistant-ip>:<port>/wall`.
 
+## Adding your own FlightRadar24 API key (optional)
+The add-on works without a key. An official FR24 API key improves names and tracks:
+- Airline and airport names are always filled in, at 1 credit each. Each name is looked up once and then cached permanently.
+- When you click a flight whose track isn't otherwise available, the add-on can fetch it, at 40 credits per track.
+
+Live positions never use credits.
+
+1. Get a key from the FlightRadar24 API portal at [fr24api.flightradar24.com](https://fr24api.flightradar24.com). Any plan works, including the Explorer plan.
+2. Copy the API token from **Key management**. It looks like `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx|xxxxxxxx…`. Copy the whole value, including the part after the `|`.
+3. In Home Assistant, go to **Settings → Add-ons → Overhead Flights → Configuration**:
+   - Paste the token into **FlightRadar24 API key**.
+   - Set **FR24 API calls per minute** below your plan's limit. The default is 8, which suits a 10-requests-a-minute plan.
+   - Turn off **Use FR24 credits for tracks** if you only want the 1-credit name lookups.
+4. Click **Save**, then **Restart** the add-on. The log should say `official FR24 key set`.
+
+The key is stored in Home Assistant's add-on configuration. It's only ever sent to `fr24api.flightradar24.com`.
+
 ## Data sources
 - **`adsb_lol` (default).** It needs no key.
   - Live positions and tracks come from [adsb.lol](https://adsb.lol), a community network of ADS-B receivers. Its data is open under the ODbL.
