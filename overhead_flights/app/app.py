@@ -504,7 +504,7 @@ def compute_stats(days):
 
 
 # ---------- adsb.lol / adsbdb / planespotters (open data source) ----------
-UA = {"User-Agent": "overhead-flights/1.1 (+https://github.com/jmurphylaois1/overhead-flights)"}
+UA = {"User-Agent": "overhead-flights/1.1 (+https://github.com/jmurphylaois/overhead-flights)"}
 open_limiter = RateLimiter(30)     # adsbdb route lookups + adsb.lol trace files
 photo_limiter = RateLimiter(20)    # planespotters.net
 adsb_route = {}   # callsign -> adsbdb flightroute dict, or {} when unknown

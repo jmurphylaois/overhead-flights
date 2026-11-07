@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.1
+- The project moved to github.com/jmurphylaois/overhead-flights.
+- Added step-by-step instructions for adding your own FR24 API key.
+
 ## 1.1.0
 - New default data source: **adsb.lol** open data (ODbL), with routes from **adsbdb** and photos from **planespotters.net** (credited and linked).
   - It needs no API key.

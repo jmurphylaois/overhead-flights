@@ -27,9 +27,9 @@ A live map of the aircraft flying over your home. It runs as a **Home Assistant 
 - Any plane within the "overhead" radius goes into a "Passed overhead today" list, which is saved to `passes.jsonl`.
 
 ## Install as a Home Assistant add-on
-[![Add repository to my Home Assistant](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2Fjmurphylaois1%2Foverhead-flights)
+[![Add repository to my Home Assistant](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2Fjmurphylaois%2Foverhead-flights)
 
-1. Click the button above, or go to **Settings → Add-ons → Add-on Store → ⋮ → Repositories** and add `https://github.com/jmurphylaois1/overhead-flights`.
+1. Click the button above, or go to **Settings → Add-ons → Add-on Store → ⋮ → Repositories** and add `https://github.com/jmurphylaois/overhead-flights`.
 2. Install **Overhead Flights** and start it. It appears as **Flights** in the sidebar.
 3. Your home location comes from Home Assistant automatically. Everything else can be set on the add-on's **Configuration** tab (see [DOCS.md](overhead_flights/DOCS.md)).
 

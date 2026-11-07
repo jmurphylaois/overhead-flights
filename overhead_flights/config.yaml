@@ -1,7 +1,7 @@
 name: Overhead Flights
-version: "1.1.0"
+version: "1.1.1"
 slug: overhead_flights
-url: https://github.com/jmurphylaois1/overhead-flights
+url: https://github.com/jmurphylaois/overhead-flights
 description: >-
   Live map of the aircraft flying over your home: flight tracks, airline logos,
   routes, where-to-look angles, overhead history, stats and a wall-screen mode.
