@@ -31,6 +31,7 @@ A live map of the aircraft flying over your home. It runs as a **Home Assistant 
   Helicopters and private jets get a quieter badge.
 - **Today strip:** a line showing today's flights, overhead passes, busiest hour, lowest pass and notable visitors.
 - **Tour** shows each flight in turn for `tour_seconds` (default 5), nearest first, and starts again after the last one.
+- **Photos:** each plane shows its own photo from FlightRadar24 or Planespotters.net. If neither has one, it shows a Wikipedia photo of the aircraft type, labelled as a type photo.
 - Details include airline, origin and destination, aircraft type and photo, registration, altitude, speed, climb rate, and departure/arrival times.
 - The app predicts how close each plane will pass and when.
 - Any plane within the "overhead" radius goes into a "Passed overhead today" list, which is saved to `passes.jsonl`.
@@ -60,6 +61,7 @@ The repo includes a Lovelace card, [`card/overhead-flights-card.js`](card/overhe
    paths: true               # draw every plane's recent track
    alerts: true              # overhead countdown, emergency banner, unusual aircraft first (default on)
    summary: true             # "Today" strip (default on)
+   scale: 2                  # enlarge text, labels and the flight card for a wall screen (1-4, default 1)
    ```
    `height` can also be any CSS height, e.g. `"78vh"`, to fill the screen.
 

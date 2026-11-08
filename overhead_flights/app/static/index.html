@@ -160,6 +160,17 @@
   .b-new, .b-rare { background: #fbbf24; color: #0b1016; } .b-heli, .b-bizjet { background: #334155; color: #e6edf3; }
   .pl { position: relative; }
   .halo { position: absolute; inset: -9px; border-radius: 50%; border: 2px solid; animation: halo 1.6s ease-out infinite; pointer-events: none; }
+  .target { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); border-radius: 50%; pointer-events: none;
+    border: 3px solid var(--accent); box-shadow: 0 0 18px var(--accent), inset 0 0 14px rgba(56,189,248,.35);
+    background: rgba(56,189,248,.12); animation: target 2s ease-in-out infinite; }
+  .target i { position: absolute; width: 26%; height: 26%; border: 3px solid #fff; }
+  .target i:nth-child(1) { left: -12%; top: -12%; border-right: 0; border-bottom: 0; }
+  .target i:nth-child(2) { right: -12%; top: -12%; border-left: 0; border-bottom: 0; }
+  .target i:nth-child(3) { left: -12%; bottom: -12%; border-right: 0; border-top: 0; }
+  .target i:nth-child(4) { right: -12%; bottom: -12%; border-left: 0; border-top: 0; }
+  @keyframes target { 0%, 100% { transform: translate(-50%, -50%) scale(1); } 50% { transform: translate(-50%, -50%) scale(1.12); } }
+  .pl > svg { position: relative; z-index: 1; }
+  body.wall .leaflet-tooltip.tag.sel { border: 2px solid var(--accent); background: rgba(10,40,66,.96); box-shadow: 0 0 16px rgba(56,189,248,.6); }
   @keyframes halo { from { transform: scale(.55); opacity: 1; } to { transform: scale(1.5); opacity: 0; } }
   .wc-tags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
   .wc-tags .bdg { font-size: 12px; padding: 3px 8px; }
@@ -181,8 +192,24 @@
   #today b { color: var(--accent); letter-spacing: .08em; margin-right: 4px; }
   #today .bdg { margin: 0 3px 0 2px; }
   body.wall #today.has { display: block; }
+  /* on a dashboard card, scale the strip and status chip with the card's width so they read on big screens */
+  body.embed #today { font-size: clamp(12px, 1vw, 20px); padding: .45em 1.2em; top: 12px; left: 56px; max-width: calc(100% - 26vw - 80px);
+    background: rgba(7,18,30,.92); border-color: rgba(79,182,255,.45); }
+  body.embed #wallclock .c { font-size: clamp(12px, 1vw, 20px); }
+  body.embed #wallclock { padding: .45em 1.1em; top: 12px; }
+  body.embed #today .bdg { font-size: .8em; }
   body.wall:not(.embed) #today { top: 18px; left: 230px; font-size: 14px; padding: 7px 16px; }
   body.wall:not(.embed) #alert { top: 70px; }
+  /* ?scale=2 (card option "scale") enlarges everything drawn over the map, for a screen read from across the room */
+  body.embed.scaled #today, body.embed.scaled #wallclock, body.embed.scaled #wallcard, body.embed.scaled #alert,
+  body.embed.scaled .legend, body.embed.scaled .leaflet-control-zoom { zoom: var(--s, 1); }
+  body.embed.scaled #today { font-size: 12px; white-space: normal; border-radius: 12px; line-height: 1.5;
+    top: 46px; left: 50px; max-width: min(760px, calc(var(--vw) - 70px)); }
+  body.embed.scaled #wallclock .c { font-size: 12px; }
+  body.embed.scaled #wallcard { width: min(560px, calc(var(--vw) - 20px)); }
+  body.embed.scaled.focus #wallcard { width: min(680px, calc(var(--vw) - 20px)); }
+  body.embed.scaled .leaflet-tooltip.tag { font-size: calc(11px * var(--s, 1)); }
+  body.embed.scaled .leaflet-tooltip.tag b { font-size: 1.1em; }
   @media (max-width: 700px) { body.embed #today { display: none !important; } #alert .big { font-size: 18px; } }
   @media (max-width: 520px) { body.embed .wc-in { grid-template-columns: 1fr; } body.embed .wc-photo { display: none; } }
   @media (max-width: 800px) {
@@ -253,6 +280,13 @@ const WALL = EMBED || /\/wall\/?$/.test(location.pathname) || QS.has("wall");
 if (WALL) document.body.classList.add("wall");
 if (EMBED) document.body.classList.add("embed");
 if (EMBED && QS.get("card") === "0") document.body.classList.add("nocard");
+const SCALE = EMBED ? Math.min(4, Math.max(1, parseFloat(QS.get("scale")) || 1)) : 1;
+if (SCALE > 1) {
+  document.body.classList.add("scaled"); document.documentElement.style.setProperty("--s", SCALE);
+  // zoomed overlays measure in their own (unzoomed) pixels, so give them the frame width in those units
+  const vw = () => document.documentElement.style.setProperty("--vw", (innerWidth / SCALE) + "px");
+  vw(); addEventListener("resize", vw);
+}
 
 const ALERTS = !(EMBED && QS.get("alerts") === "0");     // overhead countdown + emergency banner + priority touring
 const SUMMARY = !(EMBED && QS.get("summary") === "0");   // "Today" strip
@@ -290,6 +324,14 @@ function planeIcon(f, isSel) {
     <path d="M12 2c.8 0 1.3.9 1.3 2v5.2l7.7 4.6v2l-7.7-2.4v4.8l2.2 1.7v1.6L12 20.6l-3.5.9v-1.6l2.2-1.7v-4.8L3 15.8v-2l7.7-4.6V4c0-1.1.5-2 1.3-2z"
       fill="${c}" stroke="${isSel ? "#fff" : "#0b1016"}" stroke-width="${isSel ? 1.4 : 1}"/></svg>`;
   const sp = special(f), hc = focus?.f.id === f.id ? (focus.kind === "emergency" ? TAGCOL.emergency : "#f97316") : sp ? TAGCOL[sp.k] : null;
+  if (isSel && WALL) {
+    // the plane the card is showing: a bright target ring with corner brackets, sized for the screen
+    const z = Math.round(s * Math.max(1, SCALE * 0.8)), r = Math.round(z * 2.3);
+    const sel = `<div class="pl" style="width:${z}px;height:${z}px">
+      <div class="target" style="width:${r}px;height:${r}px"><i></i><i></i><i></i><i></i></div>
+      ${hc ? `<div class="halo" style="border-color:${hc}"></div>` : ""}${svg.replace(/width="\d+" height="\d+"/, `width="${z}" height="${z}"`)}</div>`;
+    return L.divIcon({ html: sel, className: "", iconSize: [z, z], iconAnchor: [z/2, z/2] });
+  }
   const html = hc ? `<div class="pl" style="width:${s}px;height:${s}px"><div class="halo" style="border-color:${hc}"></div>${svg}</div>` : svg;
   return L.divIcon({ html, className: "", iconSize: [s, s], iconAnchor: [s/2, s/2] });
 }
@@ -470,7 +512,7 @@ function drawMarkers(flights) {
       const cls = "tag" + (f.id === selected ? " sel" : "");
       const tt = m.getTooltip(), html = label(f);
       if (!tt || tt.options.className !== cls) {
-        m.unbindTooltip().bindTooltip(html, { permanent: true, direction: "right", offset: [14, 0], className: cls });
+        m.unbindTooltip().bindTooltip(html, { permanent: true, direction: "right", offset: [f.id === selected && WALL ? Math.round(36 * Math.max(1, SCALE * 0.8)) : 14, 0], className: cls });
       } else if (m._lastLabel !== html) m.setTooltipContent(html);
       m._lastLabel = html;
     } else if (m.getTooltip()) { m.unbindTooltip(); m._lastLabel = null; }
@@ -637,7 +679,9 @@ async function loadDetail(id, manual = false) {
 function photoBlock(d, f) {
   if (!d.photo) return "";
   const img = `<img class="photo" src="${esc(d.photo)}" alt="Photo of ${esc(f.registration)}">`;
-  const credit = d.photo_link
+  const credit = d.photo_source === "type"
+    ? `Type photo (not this aircraft) · <a href="${esc(d.photo_link)}" target="_blank" style="color:inherit">${esc(d.photo_credit)} on Wikipedia</a>`
+    : d.photo_link
     ? `Photo © ${esc(d.photo_credit || "unknown")} · <a href="${esc(d.photo_link)}" target="_blank" style="color:inherit">Planespotters.net</a>`
     : `Photo © ${esc(d.photo_credit || "JetPhotos")}`;
   return (d.photo_link ? `<a href="${esc(d.photo_link)}" target="_blank">${img}</a>` : img) + `<div class="credit">${credit}</div>`;
@@ -696,7 +740,8 @@ function updateLive(f) {
           <div><div class="k">Aircraft</div><div class="v">${esc(f.aircraft || f.aircraft_code || "—")}</div></div>
           <div><div class="k">Where to look</div><div class="v">${esc(lookText(f))}</div></div>
         </div>
-        ${d.photo && d.photo_credit ? `<div class="sub" style="margin-top:10px;font-size:11px">Photo © ${esc(d.photo_credit)}${d.photo_link ? " / Planespotters.net" : ""}</div>` : ""}
+        ${d.photo && d.photo_credit ? `<div class="sub" style="margin-top:10px;font-size:11px">${d.photo_source === "type"
+          ? `Type photo · ${esc(d.photo_credit)} (Wikipedia)` : `Photo © ${esc(d.photo_credit)}${d.photo_link ? " / Planespotters.net" : ""}`}</div>` : ""}
       </div></div>`;
   }
 }

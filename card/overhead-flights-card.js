@@ -8,6 +8,7 @@
  *   labels: compact              # full | compact | off
  *   paths: true                  # also draw every plane's recent track (the touring plane always shows its own)
  *   alerts: true                 # overhead countdown, emergency-squawk banner, unusual aircraft jump the tour (default on)
+ *   scale: 2                     # enlarge the card, labels, clock and Today strip for a wall screen (1-4, default 1)
  *   summary: true                # "Today" strip: flights, overhead, busiest hour, lowest pass, notable visitors (default on)
  *   zoom: 8                      # optional fixed zoom (default: fit the add-on's range)
  *   radius: 60                   # optional: fit this many km around home instead
@@ -17,7 +18,7 @@
  * The add-on sits behind Home Assistant's Ingress, so the card opens an Ingress session the same way
  * Home Assistant's own add-on panels do. That needs an administrator account.
  */
-const OFC_VERSION = "1.3.0";
+const OFC_VERSION = "1.3.1";
 const ofcHeight = (h) => (typeof h === "number" || /^\d+$/.test(String(h ?? ""))) ? `${Number(h) || 460}px` : String(h);
 const ofcPx = (h) => (typeof h === "number" ? h : parseInt(h, 10)) || 460;
 
@@ -74,6 +75,7 @@ class OverheadFlightsCard extends HTMLElement {
       if (c.paths) qs.set("paths", "1");
       if (c.alerts === false) qs.set("alerts", "0");
       if (c.summary === false) qs.set("summary", "0");
+      if (c.scale && Number(c.scale) > 1) qs.set("scale", String(c.scale));
       const iframe = document.createElement("iframe");
       iframe.src = `${addon.ingress_entry}/embed?${qs}`;
       iframe.title = "Overhead Flights";

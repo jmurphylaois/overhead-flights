@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.3.1
+- **Highlighted plane:** on a wall or card view, the plane the card is showing gets a glowing target ring with corner brackets, and its label is outlined to match.
+- **More aircraft photos:**
+  - When FlightRadar24 has no photo, the app looks for one on Planespotters.net by registration.
+  - If there's still none, it shows a Wikipedia photo of the aircraft type, labelled "Type photo".
+- **Big-screen scaling:**
+  - Dashboard card 1.3.1 adds `scale` (1–4). It enlarges the flight card, labels, clock chip, alert banner and Today strip for screens read from across the room.
+  - The Today strip now wraps rather than cutting off, and sits below the status chip.
+
 ## 1.3.0
 - **Overhead countdown:** a banner counts down to a plane passing over the house. The tour holds on that plane and its card gets bigger until it has gone by.
 - **Emergency squawks:** 7700, 7600 and 7500 get a red banner, and the tour stays on that plane.

@@ -20,6 +20,7 @@ import threading
 import time
 import webbrowser
 import urllib.error
+import urllib.parse
 import urllib.request
 from datetime import datetime, date
 from pathlib import Path
@@ -946,6 +947,85 @@ def paid_track(fid):
     return pts
 
 
+# ---------- photo fallbacks: planespotters by registration, then a Wikipedia photo of the aircraft type ----------
+reg_photo = {}    # registration -> {"src", "credit", "link"} or {}
+TYPE_PHOTO_PATH = DATA / "type_photos.json"
+try:
+    type_photo = json.loads(TYPE_PHOTO_PATH.read_text())   # model text -> {"src", "title", "link"} or {}
+except Exception:  # noqa: BLE001
+    type_photo = {}
+_WP_BAD = re.compile(r"^List of|Flight \d|accident|incident|crash|\(airline\)|Airlines?$|Airways$|manufacturer", re.I)
+
+
+def planespotters_reg(reg):
+    if not reg:
+        return {}
+    if reg in reg_photo:
+        return reg_photo[reg]
+    if not photo_limiter.try_acquire():
+        return {}
+    try:
+        ph = http_json(f"https://api.planespotters.net/pub/photos/reg/{urllib.parse.quote(reg)}", timeout=6).get("photos") or []
+        reg_photo[reg] = {"src": ph[0]["thumbnail_large"]["src"], "credit": ph[0].get("photographer"),
+                          "link": ph[0].get("link")} if ph else {}
+    except Exception:  # noqa: BLE001
+        return {}
+    return reg_photo[reg]
+
+
+def wikipedia_type_photo(model):
+    """A representative photo of the aircraft type (not this airframe), from the type's Wikipedia article."""
+    model = (model or "").strip()
+    if not model:
+        return {}
+    if model in type_photo:
+        return type_photo[model]
+    if not photo_limiter.try_acquire():
+        return {}
+    make = model.split()[0].lower()[:5]
+    num = (re.findall(r"\d+", model) or [None])[0]
+    short = re.sub(r"[-/(].*$", "", model).strip()       # "Boeing 747-406F(ER)" -> "Boeing 747"
+    found = {}
+    try:
+        for q in dict.fromkeys([model, short]):
+            args = urllib.parse.urlencode({"action": "query", "format": "json", "generator": "search",
+                                           "gsrsearch": q + " aircraft", "gsrlimit": 5, "gsrnamespace": 0,
+                                           "prop": "pageimages", "piprop": "thumbnail", "pithumbsize": 800})
+            pages = sorted(((http_json("https://en.wikipedia.org/w/api.php?" + args, timeout=6).get("query") or {})
+                            .get("pages") or {}).values(), key=lambda x: x.get("index", 99))
+            for pg in pages:
+                t, src = pg.get("title", ""), (pg.get("thumbnail") or {}).get("source")
+                digits = re.findall(r"\d+", t)
+                if src and make in t.lower() and not _WP_BAD.search(t) and (not digits or not num or num in digits):
+                    found = {"src": src, "title": t, "link": "https://en.wikipedia.org/wiki/" + urllib.parse.quote(t.replace(" ", "_"))}
+                    break
+            if found:
+                break
+    except Exception:  # noqa: BLE001
+        return {}      # network trouble: try again next time
+    type_photo[model] = found
+    try:
+        TYPE_PHOTO_PATH.write_text(json.dumps(type_photo))
+    except Exception:  # noqa: BLE001
+        pass
+    return found
+
+
+def add_photo_fallback(info, reg, model):
+    """Fill info["photo"] when the main source had none."""
+    if info.get("photo"):
+        info.setdefault("photo_source", "planespotters" if info.get("photo_link") else "fr24")
+        return info
+    ph = planespotters_reg(reg)
+    if ph.get("src"):
+        return {**info, "photo": ph["src"], "photo_credit": ph.get("credit"), "photo_link": ph.get("link"),
+                "photo_source": "planespotters"}
+    tp = wikipedia_type_photo(model)
+    if tp.get("src"):
+        return {**info, "photo": tp["src"], "photo_credit": tp["title"], "photo_link": tp["link"], "photo_source": "type"}
+    return info
+
+
 @app.get("/api/flight/<fid>")
 def api_flight(fid):
     manual = request.args.get("manual") == "1"   # a click, not Tour mode
@@ -961,7 +1041,10 @@ def api_flight(fid):
             trail = paid_track(fid) or []
         last_ts = trail[-1][3] if trail else 0
         trail += [q for q in history.get(fid, []) if q[3] > last_ts]
-        return jsonify({**adsb_info(p), "trail": trail, "partial": False})
+        info = adsb_info(p)
+        if fid in adsb_photo:   # planespotters has answered for this airframe; fall back to a type photo
+            info = add_photo_fallback(info, None, info.get("aircraft"))
+        return jsonify({**info, "trail": trail, "partial": False})
     fetched, d = trail_cache.get(fid, (0, None))
     if d is None or (manual and time.time() - fetched > 60):
         try_free_details(fid)
@@ -977,6 +1060,9 @@ def api_flight(fid):
     # append newer positions from the live feed since the track was fetched
     last_ts = trail[-1][3] if trail else 0
     trail = trail + [p for p in history.get(fid, []) if p[3] > last_ts]
+    with lock:
+        f = next((x for x in feed["flights"] if x["id"] == fid), {})
+    info = add_photo_fallback(info, f.get("registration"), info.get("aircraft") or f.get("aircraft"))
     return jsonify({**info, "trail": trail, "partial": d is None})
 
 
