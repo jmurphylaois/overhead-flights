@@ -21,6 +21,15 @@ A live map of the aircraft flying over your home. It runs as a **Home Assistant 
   - a heatmap of where planes actually fly
   It builds up from `sightings.jsonl` and `heatmap.json` while the app runs.
 - **Wall mode** (`/wall`) is a full-screen kiosk view. It tours automatically and shows a large flight card, a clock and the count of planes in the air. It dims between the `night_dim` hours.
+- **Overhead alerts:** when a plane is about to pass over the house, a banner counts down ("Overhead in 0:40, look SW, 34° up"). The tour holds on that plane until it has gone by, and its card gets bigger.
+- **Emergency squawks:** a plane squawking 7700 (emergency), 7600 (radio failure) or 7500 gets a red banner, and the tour stays on it.
+- **Unusual aircraft** get a badge and a pulsing ring, and they jump the tour queue:
+  - military
+  - rescue and air ambulance
+  - giants such as the A380, 747 and An-124
+  - aircraft types seen for the first time, or rarely, at your home. This only counts aircraft flying at 200 kt or more, and needs about 300 logged flights before it starts.
+  Helicopters and private jets get a quieter badge.
+- **Today strip:** a line showing today's flights, overhead passes, busiest hour, lowest pass and notable visitors.
 - **Tour** shows each flight in turn for `tour_seconds` (default 5), nearest first, and starts again after the last one.
 - Details include airline, origin and destination, aircraft type and photo, registration, altitude, speed, climb rate, and departure/arrival times.
 - The app predicts how close each plane will pass and when.
@@ -48,7 +57,11 @@ The repo includes a Lovelace card, [`card/overhead-flights-card.js`](card/overhe
    zoom: 9                   # optional fixed zoom; the default fits the add-on's range
    tour: true                # cycle a flight card through each aircraft
    labels: compact           # full | compact | off
+   paths: true               # draw every plane's recent track
+   alerts: true              # overhead countdown, emergency banner, unusual aircraft first (default on)
+   summary: true             # "Today" strip (default on)
    ```
+   `height` can also be any CSS height, e.g. `"78vh"`, to fill the screen.
 
 The card opens an Ingress session to the add-on, the same way Home Assistant's own add-on panels do. So it only works for administrator accounts, and the add-on must be running.
 

@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.3.0
+- **Overhead countdown:** a banner counts down to a plane passing over the house. The tour holds on that plane and its card gets bigger until it has gone by.
+- **Emergency squawks:** 7700, 7600 and 7500 get a red banner, and the tour stays on that plane.
+- **Unusual aircraft** get badges and a pulsing ring on the map, and they jump the tour queue:
+  - military
+  - rescue and air ambulance
+  - giants (A380, 747, An-124, Beluga and similar)
+  - types seen for the first time, or only rarely, at your home. This only counts aircraft flying at 200 kt or more, so local light aircraft don't flood it.
+- **Today strip:** shows flights, overhead passes, busiest hour, lowest pass and notable visitors. There is a new `/api/today` endpoint behind it.
+- Dashboard card 1.3.0 adds new options:
+  - `paths`, `alerts` and `summary`
+  - `height` accepts any CSS height (e.g. `78vh`)
+- The desktop version's default location is now Dublin city centre. Set your own in `config.json`.
+
 ## 1.2.0
 - New `/embed` view, used by the new **Overhead Flights dashboard card** (`card/overhead-flights-card.js`) to show the live map inside any dashboard. It has:
   - a compact touring flight card

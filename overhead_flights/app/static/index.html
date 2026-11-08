@@ -144,6 +144,46 @@
   body.embed .wc-stats .k { font-size: 10px; }
   body.embed .leaflet-tooltip.tag { font-size: 11px; }
   body.embed .leaflet-control-attribution { font-size: 9px; }
+  /* Alerts: overhead countdown, emergency squawks, special aircraft */
+  #alert { display: none; position: absolute; top: 54px; left: 50%; transform: translateX(-50%); z-index: 700; border-radius: 14px;
+    padding: 10px 22px; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,.5); max-width: calc(100% - 120px); }
+  #alert.show { display: block; }
+  #alert.overhead { background: rgba(249,115,22,.96); color: #0b1016; }
+  #alert.emergency { background: rgba(220,38,38,.96); color: #fff; animation: pulse 1.2s infinite; }
+  #alert .big { font-size: 24px; font-weight: 800; letter-spacing: .05em; white-space: nowrap; }
+  #alert .small { font-size: 14px; font-weight: 600; margin-top: 2px; }
+  #alert .cd { font-variant-numeric: tabular-nums; }
+  @keyframes pulse { 50% { box-shadow: 0 0 0 8px rgba(220,38,38,.35); } }
+  .bdg { display: inline-block; font-size: 10px; font-weight: 800; letter-spacing: .05em; border-radius: 4px; padding: 1px 5px; line-height: 1.4; white-space: nowrap; }
+  .b-emergency { background: #dc2626; color: #fff; } .b-military { background: #84cc16; color: #0b1016; }
+  .b-rescue { background: #facc15; color: #0b1016; } .b-giant { background: #a855f7; color: #fff; }
+  .b-new, .b-rare { background: #fbbf24; color: #0b1016; } .b-heli, .b-bizjet { background: #334155; color: #e6edf3; }
+  .pl { position: relative; }
+  .halo { position: absolute; inset: -9px; border-radius: 50%; border: 2px solid; animation: halo 1.6s ease-out infinite; pointer-events: none; }
+  @keyframes halo { from { transform: scale(.55); opacity: 1; } to { transform: scale(1.5); opacity: 0; } }
+  .wc-tags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+  .wc-tags .bdg { font-size: 12px; padding: 3px 8px; }
+  body.focus #wallcard { width: min(900px, calc(100% - 48px)); border-color: var(--hot); box-shadow: 0 0 0 2px var(--hot), 0 12px 40px rgba(0,0,0,.5); }
+  body.focus .wc-in { grid-template-columns: 320px 1fr; }
+  body.focus.emergency #wallcard { border-color: #dc2626; box-shadow: 0 0 0 2px #dc2626, 0 12px 40px rgba(0,0,0,.5); }
+  body.focus .wc-top b { font-size: 40px; }
+  body.focus .wc-route { font-size: 28px; }
+  body.focus .wc-stats .v { font-size: 26px; }
+  body.embed.focus #wallcard { width: min(700px, calc(100% - 20px)); }
+  body.embed.focus .wc-in { grid-template-columns: 230px 1fr; }
+  body.embed.focus .wc-photo { min-height: 170px; }
+  body.embed.focus .wc-top b { font-size: 28px; }
+  body.embed.focus .wc-route { font-size: 20px; }
+  body.embed.focus .wc-stats .v { font-size: 18px; }
+  #today { display: none; position: absolute; z-index: 600; top: 10px; left: 54px; max-width: calc(100% - 300px);
+    background: rgba(7,18,30,.85); border: 1px solid rgba(79,182,255,.22); border-radius: 999px; padding: 5px 14px;
+    font-size: 12px; color: #e6f1f8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #today b { color: var(--accent); letter-spacing: .08em; margin-right: 4px; }
+  #today .bdg { margin: 0 3px 0 2px; }
+  body.wall #today.has { display: block; }
+  body.wall:not(.embed) #today { top: 18px; left: 230px; font-size: 14px; padding: 7px 16px; }
+  body.wall:not(.embed) #alert { top: 70px; }
+  @media (max-width: 700px) { body.embed #today { display: none !important; } #alert .big { font-size: 18px; } }
   @media (max-width: 520px) { body.embed .wc-in { grid-template-columns: 1fr; } body.embed .wc-photo { display: none; } }
   @media (max-width: 800px) {
     #app { grid-template-columns: 1fr; grid-template-rows: 55vh 45vh; }
@@ -161,6 +201,8 @@
       <div class="ticks"><span>0</span><span>10k</span><span>20k</span><span>30k</span><span>40k+</span></div>
       <div id="raintime"></div>
     </div>
+    <div id="today"></div>
+    <div id="alert"></div>
     <div id="wallclock"><div class="t" id="clock"></div><div class="c" id="wallcount"></div></div>
     <a id="wallexit" class="chip" href="./">✕ Exit wall mode</a>
     <div id="wallcard"><div class="tourbar"></div><div id="wallinner"></div></div>
@@ -194,6 +236,7 @@
     </section>
     <section id="detail"></section>
     <section><h2 id="listhead">Aircraft nearby</h2><div id="list"></div></section>
+    <section id="todaysec" style="display:none"><h2>Today</h2><div id="todaytxt" class="sub" style="line-height:1.9"></div></section>
     <section><h2 id="passhead">Passed overhead today</h2><div id="passes"></div></section>
   </aside>
 </div>
@@ -211,7 +254,14 @@ if (WALL) document.body.classList.add("wall");
 if (EMBED) document.body.classList.add("embed");
 if (EMBED && QS.get("card") === "0") document.body.classList.add("nocard");
 
-let CFG, map, selected = null, trailLayer = null, routeLayer = null;
+const ALERTS = !(EMBED && QS.get("alerts") === "0");     // overhead countdown + emergency banner + priority touring
+const SUMMARY = !(EMBED && QS.get("summary") === "0");   // "Today" strip
+let CFG, map, selected = null, trailLayer = null, routeLayer = null, fetchedAt = 0;
+let focus = null;   // {f, kind} while a plane is about to pass overhead or squawking an emergency
+const JUMP = new Set(["emergency", "military", "giant", "new", "rare", "rescue"]);
+const TAGCOL = { emergency: "#dc2626", military: "#84cc16", rescue: "#facc15", giant: "#a855f7", new: "#fbbf24", rare: "#fbbf24" };
+const special = f => (f.tags || []).find(t => JUMP.has(t.k));
+const badges = (f, max = 2) => (f.tags || []).slice(0, max).map(t => `<span class="bdg b-${t.k}">${esc(t.s)}</span>`).join("");
 let allFlights = [], lastFlights = [], detail = null;
 const markers = new Map();
 
@@ -239,7 +289,9 @@ function planeIcon(f, isSel) {
   const svg = `<svg class="plane" width="${s}" height="${s}" viewBox="0 0 24 24" style="transform:rotate(${f.heading}deg)">
     <path d="M12 2c.8 0 1.3.9 1.3 2v5.2l7.7 4.6v2l-7.7-2.4v4.8l2.2 1.7v1.6L12 20.6l-3.5.9v-1.6l2.2-1.7v-4.8L3 15.8v-2l7.7-4.6V4c0-1.1.5-2 1.3-2z"
       fill="${c}" stroke="${isSel ? "#fff" : "#0b1016"}" stroke-width="${isSel ? 1.4 : 1}"/></svg>`;
-  return L.divIcon({ html: svg, className: "", iconSize: [s, s], iconAnchor: [s/2, s/2] });
+  const sp = special(f), hc = focus?.f.id === f.id ? (focus.kind === "emergency" ? TAGCOL.emergency : "#f97316") : sp ? TAGCOL[sp.k] : null;
+  const html = hc ? `<div class="pl" style="width:${s}px;height:${s}px"><div class="halo" style="border-color:${hc}"></div>${svg}</div>` : svg;
+  return L.divIcon({ html, className: "", iconSize: [s, s], iconAnchor: [s/2, s/2] });
 }
 
 // airline logo: FR24's operator logo by ICAO code, falling back to an IATA-based logo, else hidden
@@ -257,8 +309,8 @@ let tagMode = EMBED ? (QS.get("labels") || "compact") : WALL ? "compact" : store
 function label(f) {
   const alt = f.altitude_ft ? f.altitude_ft.toLocaleString() + " ft" : "on ground";
   const id = esc(f.number || f.callsign || f.registration);
-  if (tagMode === "compact") return `<div class="tg-top">${logo(f)}<b>${id}</b><span class="tg-dim">${alt}</span></div>`;
-  return `<div class="tg-top">${logo(f)}<b>${id}</b><span class="tg-dim">${esc(f.aircraft_code || "")}</span></div>
+  if (tagMode === "compact") return `<div class="tg-top">${logo(f)}<b>${id}</b>${badges(f, 1)}<span class="tg-dim">${alt}</span></div>`;
+  return `<div class="tg-top">${logo(f)}<b>${id}</b>${badges(f, 1)}<span class="tg-dim">${esc(f.aircraft_code || "")}</span></div>
     <div>${esc(f.origin || "?")} → ${esc(f.destination || "?")}</div>
     <div class="tg-dim"><span style="color:${altColor(f.altitude_ft)}">${alt}</span> ${vsArrow(f.vspeed_fpm)} · ${f.speed_kt} kt</div>`;
 }
@@ -358,6 +410,8 @@ async function init() {
   else if (WALL) { startTour(); tickClock(); setInterval(tickClock, 1000 * 20); }
   else if (store.get("tour", "0") === "1") startTour();
   drawRain(); setInterval(drawRain, 10 * 60 * 1000);
+  setInterval(renderAlert, 1000);
+  if (SUMMARY) { loadToday(); setInterval(loadToday, 60 * 1000); }
   poll();
   setInterval(poll, CFG.refresh_seconds * 1000);
   setInterval(() => selected && loadDetail(selected), 15000);
@@ -373,9 +427,11 @@ async function poll() {
     : `<span class="dot"></span>${age === null ? "loading…" : "updated " + age + "s ago"}`;
   if (data.error) console.warn(data.error);
   allFlights = data.flights;
+  fetchedAt = data.fetched || Date.now() / 1000;
   drawPasses(data.passes_today);
   applyFlights();
   drawPaths();
+  renderAlert();
 }
 
 function applyFlights() {
@@ -437,7 +493,7 @@ function drawList(flights) {
     const route = `${esc(f.origin_city || f.origin || "?")} → ${esc(f.destination_city || f.destination || "?")}`;
     const near = f.cpa_min != null && f.cpa_km <= CFG.overhead_km ? ` · <span style="color:var(--hot)">overhead in ~${Math.max(1, Math.round(f.cpa_min))} min</span>` : "";
     return `<div class="row ${f.id === selected ? "sel" : ""} ${f.distance_km <= CFG.overhead_km ? "over" : ""}" data-id="${f.id}">
-      <span class="nm">${logo(f)}<b>${esc(f.number || f.callsign || f.registration)}</b></span>
+      <span class="nm">${logo(f)}<b>${esc(f.number || f.callsign || f.registration)}</b>${badges(f)}</span>
       <span class="r" style="color:${altColor(f.altitude_ft)}">${fmtAlt(f.altitude_ft)} ${vsArrow(f.vspeed_fpm)}</span>
       <span class="sub">${esc(f.airline || f.airline_icao || "Private / unknown")} · ${route}</span>
       <span class="sub r">${f.distance_km} km</span>
@@ -459,7 +515,7 @@ function drawPasses(passes) {
 }
 
 // ---------- all-paths layer ----------
-let pathsOn = !WALL && store.get("paths", "0") === "1", pathsLayer = null;
+let pathsOn = EMBED ? QS.get("paths") === "1" : !WALL && store.get("paths", "0") === "1", pathsLayer = null;
 async function drawPaths() {
   if (!pathsOn) { if (pathsLayer) { map.removeLayer(pathsLayer); pathsLayer = null; } return; }
   let all;
@@ -601,6 +657,7 @@ function updateLive(f) {
     <div class="title"><b>${esc(f.number || f.callsign)}</b><span class="sub">${esc(f.callsign)}</span>
       <button class="close" onclick="stopTour(); select(null)">✕</button></div>
     <div style="display:flex;align-items:center;gap:10px;margin:4px 0 10px">${logo(f, "big")}<span class="sub">${airline}</span></div>
+    ${tagLine(f)}
     ${photoBlock(d, f)}
     <div class="route">
       <div><div class="code">${oCode}</div><div class="city">${oCity}</div></div>
@@ -631,6 +688,7 @@ function updateLive(f) {
       ${d.photo ? `<img class="wc-photo" src="${esc(d.photo)}" alt="">` : ""}
       <div class="wc-body">
         <div class="wc-top">${logo(f, "big")}<b>${esc(f.number || f.callsign)}</b><span class="sub">${airline}</span></div>
+        ${tagLine(f)}
         <div class="wc-route">${oCode} → ${dCode} <span class="sub">${oCity}${oCity && dCity ? " to " : ""}${dCity}</span></div>
         <div class="wc-stats">
           <div><div class="k">Altitude</div><div class="v" style="color:${altColor(f.altitude_ft)}">${fmtAlt(f.altitude_ft)}</div></div>
@@ -700,12 +758,24 @@ async function whatsThat() {
 
 // ---------- Tour mode: dwell on each flight, nearest first, then loop ----------
 let tourOn = false, tourTimer = null, tourQueue = [];
+const shownAt = {};   // flight id -> when the tour last showed it
 function tourStep() {
   if (!tourOn) return;
+  clearTimeout(tourTimer);
+  // a plane about to pass overhead (or squawking an emergency) holds the tour until it has gone by
+  if (focus) {
+    if (selected !== focus.f.id) select(focus.f.id);
+    document.querySelectorAll(".tourbar").forEach(b => b.classList.remove("run"));
+    tourTimer = setTimeout(tourStep, 2000);
+    return;
+  }
   const live = new Set(lastFlights.map(f => f.id));
   tourQueue = tourQueue.filter(id => live.has(id));           // drop flights that have left
   if (!tourQueue.length) tourQueue = lastFlights.filter(f => !WALL || !f.on_ground).map(f => f.id); // new cycle: nearest first
-  if (tourQueue.length) select(tourQueue.shift());
+  // unusual aircraft jump the queue (at most once every 2 minutes each)
+  const sp = lastFlights.find(f => special(f) && !f.on_ground && Date.now() - (shownAt[f.id] || 0) > 120000);
+  if (sp) tourQueue = [sp.id, ...tourQueue.filter(x => x !== sp.id)];
+  if (tourQueue.length) { const id = tourQueue.shift(); shownAt[id] = Date.now(); select(id); }
   restartBar();
   tourTimer = setTimeout(tourStep, (CFG.tour_seconds || 5) * 1000);
 }
@@ -729,6 +799,67 @@ function stopTour() {
   document.querySelectorAll(".tourbar").forEach(b => b.classList.remove("run"));
   $("#tourbtn").classList.remove("on"); $("#tourbtn").textContent = "▶ Tour";
   store.set("tour", "0");
+}
+
+// ---------- alerts: overhead countdown + emergency squawks ----------
+function tagLine(f) {
+  return (f.tags || []).length ? `<div class="wc-tags">${f.tags.map(t => `<span class="bdg b-${t.k}">${esc(t.t)}</span>`).join("")}</div>` : "";
+}
+// seconds until a plane is closest to the house (0 while it's inside the overhead zone), or null if it won't pass overhead
+function etaSec(f) {
+  if (f.distance_km <= CFG.overhead_km) return 0;
+  if (f.cpa_min == null || f.cpa_km > CFG.overhead_km) return null;
+  return Math.max(0, f.cpa_min * 60 - (Date.now() / 1000 - fetchedAt));
+}
+function findFocus() {
+  if (!ALERTS || !CFG) return null;
+  const pool = (WALL ? allFlights : lastFlights).filter(f => !f.on_ground);
+  const em = pool.find(f => (f.tags || []).some(t => t.k === "emergency"));
+  if (em) return { f: em, kind: "emergency" };
+  const best = pool.map(f => [f, etaSec(f)]).filter(([, s]) => s != null && s <= 120)
+    .sort((a, b) => a[1] - b[1] || a[0].distance_km - b[0].distance_km)[0];
+  return best ? { f: best[0], kind: "overhead" } : null;
+}
+function renderAlert() {
+  const prev = focus?.f.id + "/" + focus?.kind;
+  focus = findFocus();
+  const el = $("#alert");
+  document.body.classList.toggle("focus", !!focus);
+  document.body.classList.toggle("emergency", focus?.kind === "emergency");
+  if (prev !== focus?.f.id + "/" + focus?.kind) drawMarkers(lastFlights);   // move the halo
+  if (!focus) { el.className = ""; return; }
+  const f = focus.f, id = esc(f.number || f.callsign || f.registration), who = esc(f.airline || "");
+  if (focus.kind === "emergency") {
+    const t = f.tags.find(t => t.k === "emergency");
+    el.innerHTML = `<div class="big">⚠ ${esc(t.t)}</div>
+      <div class="small">${who} ${id} · ${f.distance_km} km ${esc(f.direction)} · ${fmtAlt(f.altitude_ft)}</div>`;
+  } else {
+    const s = Math.round(etaSec(f));
+    const head = s <= 5 ? "OVERHEAD NOW" : `OVERHEAD IN <span class="cd">${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}</span>`;
+    el.innerHTML = `<div class="big">✈ ${head}</div><div class="small">${who} ${id} · ${fmtAlt(f.altitude_ft)} · ${esc(lookText(f))}</div>`;
+  }
+  el.className = "show " + focus.kind;
+  if (tourOn && selected !== f.id) tourStep();
+}
+
+// ---------- today's summary ----------
+async function loadToday() {
+  let d;
+  try { d = await (await fetch("api/today")).json(); } catch { return; }
+  const pad = h => String(h).padStart(2, "0");
+  const parts = [`${d.flights.toLocaleString()} flights`, `${d.overhead} overhead`];
+  if (d.busiest_hour != null && d.busiest_count) parts.push(`busiest ${pad(d.busiest_hour)}:00–${pad((d.busiest_hour + 1) % 24)}:00`);
+  if (d.lowest?.altitude_ft) parts.push(`lowest ${esc(d.lowest.flight)} at ${d.lowest.altitude_ft.toLocaleString()} ft`);
+  const seen = new Set(), sp = [];
+  for (const x of [...d.specials].reverse()) {
+    if (seen.has(x.flight)) continue;
+    seen.add(x.flight);
+    sp.push(`<span class="bdg b-${x.k}">${{ emergency: "⚠", military: "MIL", giant: "GIANT", new: "★ FIRST", rare: "★ RARE", rescue: "RESCUE" }[x.k]}</span>${esc(x.aircraft || x.flight)}`);
+  }
+  if (sp.length) parts.push(sp.slice(0, 4).join("  "));
+  const html = `<b>TODAY</b> ` + parts.join(" · ");
+  $("#today").innerHTML = html; $("#today").classList.add("has");
+  $("#todaytxt").innerHTML = parts.join("<br>"); $("#todaysec").style.display = "";
 }
 
 // ---------- wall clock + night dimming ----------

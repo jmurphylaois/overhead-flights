@@ -37,8 +37,8 @@ LOG_PATH = DATA / "passes.jsonl"
 DEFAULT_CONFIG = {
     "home_name": "Home",
     "data_source": "adsb_lol",   # "adsb_lol" (open data, default) or "fr24_web" (FlightRadar24's website feed)
-    "latitude": 53.0388414,
-    "longitude": -7.3034089,
+    "latitude": 53.3498,      # set your own home location here
+    "longitude": -6.2603,
     "radius_km": 110,       # how far out to show aircraft (110 km takes in Dublin Airport)
     "overhead_km": 5,       # within this horizontal distance counts as "overhead"
     "refresh_seconds": 10,
@@ -380,6 +380,9 @@ def log_sightings(flights):
                  airline_icao=f["airline_icao"], type=f["aircraft_code"],
                  origin=f["origin"], destination=f["destination"])
         if f.get("airline"): r["airline"] = f["airline"]
+        kinds = {t["k"] for t in f.get("tags", [])}
+        if kinds:
+            r["tags"] = sorted(set(r.get("tags", [])) | kinds)
         if f.get("aircraft"): r["aircraft"] = f["aircraft"]
         if not f["on_ground"]:
             r["ground_only"] = False
@@ -392,6 +395,7 @@ def log_sightings(flights):
         if r["min_dist"] < 1e9:          # skip aircraft only ever seen parked
             with SIGHT_PATH.open("a") as fh:
                 fh.write(json.dumps(r) + "\n")
+            remember_type(r)
 
 
 # heatmap: count airborne positions on a ~2 km grid, sampled every 30 s
@@ -503,6 +507,116 @@ def compute_stats(days):
     }
 
 
+# ---------- special aircraft ----------
+EMERGENCY = {"7700": "Emergency (squawk 7700)", "7600": "Radio failure (squawk 7600)", "7500": "Unlawful interference (squawk 7500)"}
+GIANT_TYPES = {"A388": "Airbus A380", "B741": "Boeing 747", "B742": "Boeing 747", "B743": "Boeing 747", "B744": "Boeing 747",
+               "B748": "Boeing 747-8", "B74S": "Boeing 747SP", "B74R": "Boeing 747", "BLCF": "747 Dreamlifter",
+               "A124": "Antonov An-124", "A225": "Antonov An-225", "AN22": "Antonov An-22", "A3ST": "Airbus Beluga",
+               "A337": "Airbus BelugaXL", "IL76": "Ilyushin Il-76", "C5": "Lockheed C-5 Galaxy", "C5M": "Lockheed C-5 Galaxy"}
+MIL_TYPES = {"C130", "C30J", "C17", "A400", "K35R", "K35E", "KC46", "E3TF", "E3CF", "E6", "P8", "P3", "R135", "EUFI",
+             "F35", "F16", "F18", "F15", "TOR", "HAWK", "H47", "H60", "NH90", "EH10", "LYNX", "C295", "CN35", "C27J",
+             "C160", "U2", "B52", "B1", "V22", "RC35", "GLF5M", "A332M", "MRTT"}
+MIL_CALLSIGNS = ("RCH", "RRR", "IAM", "GAF", "CFC", "BAF", "FAF", "CTM", "NATO", "SPAR", "SAM", "RFR", "MMF", "HKY",
+                 "LAGR", "BRK", "DUKE", "IRL", "NAVY", "ASY", "PLF", "HUAF", "SUI", "DAF", "NOW", "SHF", "AME", "HRZ")
+RESCUE_CALLSIGNS = ("RESCUE", "RSCU", "RSC", "HLE", "HELIMED", "AMBUL", "LIFELN", "MEDIC", "COASTG")
+HELI_TYPES = {"S92", "S61", "S76", "A139", "A169", "A189", "A109", "A119", "AW09", "EC35", "EC45", "EC30", "EC55", "EC75",
+              "EC20", "EC25", "EC65", "H160", "H175", "AS32", "AS50", "AS55", "AS65", "B06", "B407", "B429", "B412", "R22",
+              "R44", "R66", "MD52", "MD60", "G2CA", "GAZL", "EH10", "H47", "H60", "NH90", "LYNX", "PUMA"}
+BIZJET_TYPES = {"GLF4", "GLF5", "GLF6", "GA5C", "GA6C", "GA7C", "GA8C", "G280", "GL5T", "GLEX", "GL7T", "GL8T", "CL30",
+                "CL35", "CL60", "C68A", "C700", "C750", "C56X", "C560", "C510", "C525", "C25A", "C25B", "C25C", "C25M",
+                "E50P", "E55P", "E545", "E550", "FA7X", "FA8X", "F900", "F2TH", "FA50", "FA6X", "LJ35", "LJ45", "LJ60",
+                "LJ75", "PC24", "H25B", "PRM1", "HDJT", "SF50", "E35L", "BE40"}
+RARE_MAX = 2          # a type seen this many times or fewer before counts as rare
+LEARN_MIN = 300       # don't call anything new or rare until this many flights have been logged
+
+TYPE_COUNTS, TYPE_FIRST = {}, {}
+_hist = {"n": 0}
+
+
+def remember_type(r):
+    _hist["n"] += 1
+    t = r.get("type")
+    if t:
+        TYPE_COUNTS[t] = TYPE_COUNTS.get(t, 0) + 1
+        TYPE_FIRST.setdefault(t, r.get("first", int(time.time())))
+
+
+def load_type_history():
+    if SIGHT_PATH.exists():
+        for line in SIGHT_PATH.read_text().splitlines():
+            try:
+                remember_type(json.loads(line))
+            except ValueError:
+                pass
+
+
+def flight_tags(p, f):
+    """Labels for aircraft worth a second look, most important first: [{"k": kind, "s": short, "t": text}]."""
+    tags = []
+    code = (f.get("aircraft_code") or "").upper()
+    cs = (f.get("callsign") or "").upper()
+    model = f.get("aircraft") or GIANT_TYPES.get(code) or code
+    sq = str(f.get("squawk") or "")
+    if sq in EMERGENCY and not f["on_ground"]:
+        tags.append({"k": "emergency", "s": "SQUAWK " + sq, "t": EMERGENCY[sq]})
+    reg = (f.get("registration") or "").upper()
+    if cs.startswith(RESCUE_CALLSIGNS) or reg.startswith("EI-IC"):
+        tags.append({"k": "rescue", "s": "RESCUE", "t": "Rescue / air ambulance"})
+    elif getattr(p, "military", False) or code in MIL_TYPES or (re.match(r"^[A-Z]+", cs) and cs.startswith(MIL_CALLSIGNS)
+                                                                and not f.get("airline")):
+        tags.append({"k": "military", "s": "MILITARY", "t": "Military aircraft"})
+    if code in GIANT_TYPES:
+        tags.append({"k": "giant", "s": "GIANT", "t": "Giant: " + GIANT_TYPES[code]})
+    # first/rare only for proper traffic: local light aircraft come in so many types they'd all count as rare
+    big = (f.get("speed_kt") or 0) >= 200
+    if code and big and _hist["n"] >= LEARN_MIN and code not in HELI_TYPES:
+        n = TYPE_COUNTS.get(code, 0)
+        if n == 0:
+            tags.append({"k": "new", "s": "★ FIRST", "t": f"First {model} seen here"})
+        elif n <= RARE_MAX:
+            tags.append({"k": "rare", "s": "★ RARE", "t": f"Rare visitor: {model} (seen {n}× before)"})
+    if code in HELI_TYPES or getattr(p, "category", "") == "A7":
+        tags.append({"k": "heli", "s": "HELI", "t": "Helicopter"})
+    elif code in BIZJET_TYPES:
+        tags.append({"k": "bizjet", "s": "BIZJET", "t": "Private jet"})
+    return tags
+
+
+_today_cache = {"at": 0.0, "data": None}
+
+
+def today_summary():
+    now = time.time()
+    if _today_cache["data"] and now - _today_cache["at"] < 60:
+        return _today_cache["data"]
+    midnight = time.mktime(date.today().timetuple())
+    recs = [r for r in read_sightings() if r["first"] >= midnight and not r.get("ground_only")]
+    ov = CFG["overhead_km"]
+    overhead = [r for r in recs if r["min_dist"] <= ov]
+    hours = [0] * 24
+    for r in recs:
+        hours[time.localtime(r["first"]).tm_hour] += 1
+    busiest = max(range(24), key=lambda h: hours[h]) if recs else None
+    low = min(overhead, key=lambda r: r.get("alt_at_min") or 0) if overhead else None
+    ident = lambda r: r.get("number") or r.get("callsign") or r.get("registration") or "?"
+    specials = []
+    for r in sorted(recs, key=lambda r: r["first"]):
+        for k in r.get("tags", []):
+            if k in ("emergency", "military", "giant", "new", "rare", "rescue"):
+                specials.append({"k": k, "flight": ident(r), "aircraft": r.get("aircraft") or GIANT_TYPES.get(r.get("type")) or r.get("type")})
+    data = {
+        "flights": len(recs), "overhead": len(overhead),
+        "busiest_hour": busiest, "busiest_count": hours[busiest] if busiest is not None else 0,
+        "lowest": {"flight": ident(low), "altitude_ft": low.get("alt_at_min"), "aircraft": low.get("aircraft") or low.get("type")} if low else None,
+        "specials": specials[-12:], "learning": _hist["n"] < LEARN_MIN,
+    }
+    _today_cache.update(at=now, data=data)
+    return data
+
+
+load_type_history()
+
+
 # ---------- adsb.lol / adsbdb / planespotters (open data source) ----------
 UA = {"User-Agent": "overhead-flights/1.1 (+https://github.com/jmurphylaois/overhead-flights)"}
 open_limiter = RateLimiter(30)     # adsbdb route lookups + adsb.lol trace files
@@ -552,7 +666,8 @@ def fetch_positions_adsb():
                 vertical_speed=int(a.get("baro_rate", a.get("geom_rate", 0)) or 0), on_ground=1 if ground else 0,
                 squawk=a.get("squawk", ""), aircraft_code=a.get("t") or "", registration=a.get("r") or "",
                 callsign=cs, airline_icao=icao, airline_iata=None, number="",
-                origin_airport_iata="", destination_airport_iata="", time=int(now - a.get("seen_pos", 0)))
+                origin_airport_iata="", destination_airport_iata="", time=int(now - a.get("seen_pos", 0)),
+                military=bool((a.get("dbFlags") or 0) & 1), category=str(a.get("category") or ""))
         info = adsb_info(p)
         p.number = info.get("number") or ""
         p.airline_iata = info.get("airline_iata")
@@ -700,6 +815,7 @@ def refresh_feed():
             "look_dir": compass16(brg), "elevation_deg": elevation_angle(dist, f.altitude or 0),
             "cpa_km": cpa_km, "cpa_min": cpa_min,
         })
+        flights[-1]["tags"] = flight_tags(f, flights[-1])
         h = history.setdefault(f.id, [])
         if not h or h[-1][3] != f.time:
             h.append([f.latitude, f.longitude, f.altitude, f.time])
@@ -763,6 +879,11 @@ def embed_page():
 def api_stats():
     days = max(1, min(int(request.args.get("days", 7)), 365))
     return jsonify(compute_stats(days))
+
+
+@app.get("/api/today")
+def api_today():
+    return jsonify(today_summary())
 
 
 @app.get("/api/config")

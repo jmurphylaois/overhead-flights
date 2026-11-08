@@ -9,6 +9,9 @@ A live map of the aircraft flying near your home. Open it from **Flights** in th
 - **Rain** overlays rain radar from RainViewer.
 - **Filters** lets you hide planes on the ground, set an altitude range, pick an airport's arrivals or departures, or pick one airline.
 - **Tour** shows each flight in turn.
+- **Overhead alerts** count down to the next plane passing over your home. A red banner appears for emergency squawks (7700, 7600, 7500).
+- **Badges** mark unusual aircraft: military, rescue, giants, and first-time or rare types. Unusual aircraft jump the tour queue.
+- The **Today strip** (wall mode and dashboard card) sums up the day so far.
 - **What's that plane?** shows the aircraft highest in your sky and which way to look.
 
 ## Stats
