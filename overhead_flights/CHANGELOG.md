@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.2.0
+- New `/embed` view, used by the new **Overhead Flights dashboard card** (`card/overhead-flights-card.js`) to show the live map inside any dashboard. It has:
+  - a compact touring flight card
+  - an "N in the air · next overhead" status chip
+
 ## 1.1.1
 - The project moved to github.com/jmurphylaois/overhead-flights.
 - Added step-by-step instructions for adding your own FR24 API key.

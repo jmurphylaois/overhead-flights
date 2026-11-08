@@ -35,6 +35,23 @@ A live map of the aircraft flying over your home. It runs as a **Home Assistant 
 
 The add-on supports `aarch64` (Raspberry Pi 4/5, etc.) and `amd64`.
 
+## Show it on a dashboard (card)
+The repo includes a Lovelace card, [`card/overhead-flights-card.js`](card/overhead-flights-card.js). It puts the live map, with a touring flight card, into any dashboard.
+
+1. Copy `overhead-flights-card.js` to `/config/www/` on your Home Assistant.
+2. Go to **Settings → Dashboards → ⋮ → Resources** and add `/local/overhead-flights-card.js` as a **JavaScript module**.
+3. Add the card to a dashboard:
+   ```yaml
+   type: custom:overhead-flights-card
+   title: Flights overhead   # "" hides the header
+   height: 460
+   zoom: 9                   # optional fixed zoom; the default fits the add-on's range
+   tour: true                # cycle a flight card through each aircraft
+   labels: compact           # full | compact | off
+   ```
+
+The card opens an Ingress session to the add-on, the same way Home Assistant's own add-on panels do. So it only works for administrator accounts, and the add-on must be running.
+
 ## Run on a desktop instead
 - **Mac:** double-click `run.command`, or run `./run.command` in Terminal.
 - **Windows:** double-click `run.bat`. Python 3.10+ must be installed.

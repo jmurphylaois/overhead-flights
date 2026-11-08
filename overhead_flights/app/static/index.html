@@ -104,7 +104,7 @@
 
   /* Wall-screen mode */
   #wallcard, #wallclock, #wallexit { display: none; }
-  body.wall #app { grid-template-columns: 1fr; }
+  body.wall #app { grid-template-columns: 1fr; grid-template-rows: 1fr !important; }
   body.wall #side, body.wall .legend { display: none; }
   body.wall #wallcard { display: block; position: absolute; left: 24px; bottom: 24px; z-index: 600; width: min(720px, calc(100% - 48px));
     background: rgba(13,19,27,.93); border: 1px solid var(--line); border-radius: 18px; overflow: hidden; box-shadow: 0 12px 40px rgba(0,0,0,.5); transition: opacity 2s; }
@@ -126,6 +126,25 @@
   body.wall .leaflet-tooltip.tag { font-size: 13px; }
   body.wall.night #map { filter: brightness(.5); }
   body.wall.night #wallcard, body.wall.night #wallclock { opacity: .6; }
+  /* Embed mode (dashboard card): smaller card, status chip instead of clock */
+  body.embed #wallexit, body.embed #clock { display: none; }
+  body.embed #wallclock { top: 10px; right: 10px; background: rgba(7,18,30,.85); border: 1px solid rgba(79,182,255,.22); border-radius: 999px; padding: 5px 12px; text-shadow: none; }
+  body.embed #wallclock .c { margin: 0; font-size: 12px; color: #e6f1f8; }
+  body.embed #wallcard { left: 10px; bottom: 10px; width: min(500px, calc(100% - 20px)); border-radius: 14px; border-color: rgba(79,182,255,.22); background: rgba(7,18,30,.9); }
+  body.embed.nocard #wallcard { display: none; }
+  body.embed .wc-in { grid-template-columns: 150px 1fr; }
+  body.embed .wc-in.nophoto { grid-template-columns: 1fr; }
+  body.embed .wc-photo { min-height: 120px; }
+  body.embed .wc-body { padding: 10px 14px; }
+  body.embed .wc-top b { font-size: 20px; }
+  body.embed .wc-route { font-size: 15px; margin: 4px 0 6px; }
+  body.embed .wc-route .sub { font-size: 12px; }
+  body.embed .wc-stats { gap: 14px; }
+  body.embed .wc-stats .v { font-size: 14px; }
+  body.embed .wc-stats .k { font-size: 10px; }
+  body.embed .leaflet-tooltip.tag { font-size: 11px; }
+  body.embed .leaflet-control-attribution { font-size: 9px; }
+  @media (max-width: 520px) { body.embed .wc-in { grid-template-columns: 1fr; } body.embed .wc-photo { display: none; } }
   @media (max-width: 800px) {
     #app { grid-template-columns: 1fr; grid-template-rows: 55vh 45vh; }
     #side { border-left: 0; border-top: 1px solid var(--line); }
@@ -185,8 +204,12 @@ const $ = s => document.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const store = { get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : v; } catch { return d; } },
                 set(k, v) { try { localStorage.setItem(k, v); } catch {} } };
-const WALL = /\/wall\/?$/.test(location.pathname) || new URLSearchParams(location.search).has("wall");
+const QS = new URLSearchParams(location.search);
+const EMBED = /\/embed\/?$/.test(location.pathname);   // compact view for a dashboard card
+const WALL = EMBED || /\/wall\/?$/.test(location.pathname) || QS.has("wall");
 if (WALL) document.body.classList.add("wall");
+if (EMBED) document.body.classList.add("embed");
+if (EMBED && QS.get("card") === "0") document.body.classList.add("nocard");
 
 let CFG, map, selected = null, trailLayer = null, routeLayer = null;
 let allFlights = [], lastFlights = [], detail = null;
@@ -230,7 +253,7 @@ function logo(f, size) {
   return `<span class="logo ${size || ""}"><img src="${first}" alt="${esc(f.airline || icao || "")}" onerror="${onerr}"></span>`;
 }
 
-let tagMode = WALL ? "compact" : store.get("tags", "full");
+let tagMode = EMBED ? (QS.get("labels") || "compact") : WALL ? "compact" : store.get("tags", "full");
 function label(f) {
   const alt = f.altitude_ft ? f.altitude_ft.toLocaleString() + " ft" : "on ground";
   const id = esc(f.number || f.callsign || f.registration);
@@ -295,7 +318,8 @@ async function init() {
   L.tileLayer(esri + "World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}", { maxZoom: 16, pane: "labels" }).addTo(map);
   const home = [CFG.latitude, CFG.longitude];
   // open zoomed to fit the whole search area once; after that the map is only moved by you
-  map.fitBounds(L.latLng(home).toBounds(CFG.radius_km * 2000), { padding: [10, 10] });
+  if (EMBED && QS.get("zoom")) map.setView(home, +QS.get("zoom"));
+  else map.fitBounds(L.latLng(home).toBounds((EMBED && +QS.get("radius") || CFG.radius_km) * 2000), { padding: [10, 10] });
   L.circle(home, { radius: CFG.overhead_km * 1000, color: "#f97316", weight: 1, fillOpacity: .08 }).addTo(map)
     .bindTooltip(`Overhead zone (${CFG.overhead_km} km)`);
   for (const km of [10, 25, 50, 100].filter(k => k <= CFG.radius_km))
@@ -330,7 +354,8 @@ async function init() {
   document.addEventListener("keydown", e => { if (e.key === "Escape") $("#wt").classList.remove("show"); });
   setupFilters();
 
-  if (WALL) { startTour(); tickClock(); setInterval(tickClock, 1000 * 20); }
+  if (EMBED) { if (QS.get("tour") !== "0") startTour(); }
+  else if (WALL) { startTour(); tickClock(); setInterval(tickClock, 1000 * 20); }
   else if (store.get("tour", "0") === "1") startTour();
   drawRain(); setInterval(drawRain, 10 * 60 * 1000);
   poll();
@@ -359,7 +384,15 @@ function applyFlights() {
   drawMarkers(lastFlights);
   drawList(lastFlights);
   drawAhead();
-  if (WALL) $("#wallcount").textContent = `${allFlights.filter(f => !f.on_ground).length} aircraft in the air within ${CFG.radius_km} km`;
+  if (WALL) {
+    const air = allFlights.filter(f => !f.on_ground);
+    let txt = `${air.length} aircraft in the air within ${CFG.radius_km} km`;
+    if (EMBED) {
+      const next = air.filter(f => f.cpa_min != null && f.cpa_km <= CFG.overhead_km).sort((a, b) => a.cpa_min - b.cpa_min)[0];
+      txt = `✈ ${air.length} in the air` + (next ? ` · ${next.number || next.callsign} overhead in ~${Math.max(1, Math.round(next.cpa_min))} min` : "");
+    }
+    $("#wallcount").textContent = txt;
+  }
   if (selected) {
     const f = lastFlights.find(x => x.id === selected);
     if (f) updateLive(f); else select(null);

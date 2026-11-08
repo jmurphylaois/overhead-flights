@@ -753,6 +753,12 @@ def wall_page():
     return send_from_directory(app.static_folder, "index.html")
 
 
+@app.get("/embed")
+def embed_page():
+    """Compact view for a dashboard card: map + small touring flight card, no side panel."""
+    return send_from_directory(app.static_folder, "index.html")
+
+
 @app.get("/api/stats")
 def api_stats():
     days = max(1, min(int(request.args.get("days", 7)), 365))
