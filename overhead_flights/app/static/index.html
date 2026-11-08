@@ -280,6 +280,9 @@ const WALL = EMBED || /\/wall\/?$/.test(location.pathname) || QS.has("wall");
 if (WALL) document.body.classList.add("wall");
 if (EMBED) document.body.classList.add("embed");
 if (EMBED && QS.get("card") === "0") document.body.classList.add("nocard");
+// seconds the tour stays on each plane: the card's tour_seconds, else the add-on setting
+const TOUR_QS = EMBED ? parseInt(QS.get("tour_seconds")) : NaN;
+const tourSec = () => TOUR_QS > 0 ? Math.min(600, Math.max(2, TOUR_QS)) : (CFG.tour_seconds || 5);
 const SCALE = EMBED ? Math.min(4, Math.max(1, parseFloat(QS.get("scale")) || 1)) : 1;
 if (SCALE > 1) {
   document.body.classList.add("scaled"); document.documentElement.style.setProperty("--s", SCALE);
@@ -523,7 +526,7 @@ function drawMarkers(flights) {
 // a click on a plane or list row (keeps the tour going from that flight)
 function pick(id) {
   select(id, true);
-  if (tourOn) { tourQueue = tourQueue.filter(x => x !== id); clearTimeout(tourTimer); restartBar(); tourTimer = setTimeout(tourStep, (CFG.tour_seconds || 5) * 1000); }
+  if (tourOn) { tourQueue = tourQueue.filter(x => x !== id); clearTimeout(tourTimer); restartBar(); tourTimer = setTimeout(tourStep, tourSec() * 1000); }
 }
 
 function drawList(flights) {
@@ -822,7 +825,7 @@ function tourStep() {
   if (sp) tourQueue = [sp.id, ...tourQueue.filter(x => x !== sp.id)];
   if (tourQueue.length) { const id = tourQueue.shift(); shownAt[id] = Date.now(); select(id); }
   restartBar();
-  tourTimer = setTimeout(tourStep, (CFG.tour_seconds || 5) * 1000);
+  tourTimer = setTimeout(tourStep, tourSec() * 1000);
 }
 function startTour() {
   tourOn = true; clearTimeout(tourTimer);
@@ -834,7 +837,7 @@ function startTour() {
 function restartBar() {
   document.querySelectorAll(".tourbar").forEach(b => {
     b.classList.remove("run"); void b.offsetWidth;   // reflow so the animation restarts
-    b.style.animationDuration = (CFG.tour_seconds || 5) + "s";
+    b.style.animationDuration = tourSec() + "s";
     b.classList.add("run");
   });
 }

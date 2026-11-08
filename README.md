@@ -57,6 +57,7 @@ The repo includes a Lovelace card, [`card/overhead-flights-card.js`](card/overhe
    height: 460
    zoom: 9                   # optional fixed zoom; the default fits the add-on's range
    tour: true                # cycle a flight card through each aircraft
+   tour_seconds: 30          # seconds per aircraft (default: the add-on's tour_seconds)
    labels: compact           # full | compact | off
    paths: true               # draw every plane's recent track
    alerts: true              # overhead countdown, emergency banner, unusual aircraft first (default on)

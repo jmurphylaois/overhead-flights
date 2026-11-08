@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.3.2
+- Dashboard card 1.3.2 adds `tour_seconds`, which sets how long the tour shows each plane on that card (2–600). Without it, the card uses the add-on's Tour seconds.
+
 ## 1.3.1
 - **Highlighted plane:** on a wall or card view, the plane the card is showing gets a glowing target ring with corner brackets, and its label is outlined to match.
 - **More aircraft photos:**
