@@ -47,6 +47,7 @@ DEFAULT_CONFIG = {
     "home_elevation_m": 90, # ground height at the house, for look-up angles
     "ahead_minutes": 5,     # length of the "where it's going" projection lines
     "night_dim": [22, 7],   # wall mode dims between these hours (24h clock)
+    "aisstream_key": "",    # free key from aisstream.io: shows ships (AIS) on the map
     "airports": [],         # e.g. [{"name": "Dublin Airport", "iata": "DUB", "lat": 53.4213, "lon": -6.2701}]
     "port": 8750,
 }
@@ -320,6 +321,206 @@ def enricher():
         except Exception:  # noqa: BLE001
             pass
         time.sleep(2)
+
+
+# ---------- ships: live AIS positions from aisstream.io (free key) ----------
+try:
+    import websocket   # websocket-client
+except ImportError:    # desktop installs without it simply show no ships
+    websocket = None
+ships = {}          # mmsi -> ship dict
+ais_status = {"connected": False, "error": None, "messages": 0}
+SHIP_STATIC_PATH = DATA / "ships_static.json"   # name/type/size/destination by MMSI: ships only send these every ~6 min
+try:
+    ship_static = json.loads(SHIP_STATIC_PATH.read_text())
+except Exception:  # noqa: BLE001
+    ship_static = {}
+_static_saved = [time.time()]
+STATIC_KEYS = ("name", "type", "destination", "callsign", "imo", "length_m", "eta")
+
+
+def remember_static(mmsi, s):
+    rec = {k: s[k] for k in STATIC_KEYS if s.get(k)}
+    if rec and ship_static.get(str(mmsi)) != rec:
+        ship_static[str(mmsi)] = rec
+        if time.time() - _static_saved[0] > 120:
+            _static_saved[0] = time.time()
+            try:
+                SHIP_STATIC_PATH.write_text(json.dumps(ship_static))
+            except Exception:  # noqa: BLE001
+                pass
+NAV_STATUS = {0: "under way", 1: "at anchor", 2: "not under command", 3: "restricted manoeuvrability", 5: "moored",
+              6: "aground", 7: "fishing", 8: "sailing"}
+
+
+def ship_kind(t, mmsi):
+    """AIS ship type code -> a short kind used for colour and label."""
+    if str(mmsi).startswith("111"):
+        return "sar"   # SAR aircraft/helicopter
+    t = t or 0
+    if t == 30: return "fishing"
+    if t in (31, 32, 52, 53): return "tug"
+    if t == 50: return "pilot"
+    if t == 51: return "sar"
+    if t in (35, 55): return "military"
+    if t == 36: return "sailing"
+    if t == 37: return "pleasure"
+    if 40 <= t <= 49: return "fast ferry"
+    if 60 <= t <= 69: return "passenger"
+    if 70 <= t <= 79: return "cargo"
+    if 80 <= t <= 89: return "tanker"
+    if t in (33, 34, 58): return "service"
+    return "other"
+
+
+IRISH_NAVY = {"WILLIAM BUTLER YEATS", "GEORGE BERNARD SHAW", "SAMUEL BECKETT", "JAMES JOYCE", "GOBNAIT", "AOIBHINN",
+              "NIAMH", "ROISIN", "EITHNE", "CIARA", "ORLA"}
+ship_specials = {"day": None, "seen": {}}   # today's notable ships: mmsi -> {"k", "flight", "aircraft", "first"}
+SHIP_SPECIALS_PATH = DATA / "ships_today.json"
+try:
+    ship_specials.update(json.loads(SHIP_SPECIALS_PATH.read_text()))
+except Exception:  # noqa: BLE001
+    pass
+
+
+def ship_tags(s, mmsi):
+    """Notable ships: the Irish Naval Service, RNLI lifeboats, other navies and rescue craft."""
+    name = (s.get("name") or "").upper().replace(".", "").strip()
+    t, ms = s.get("type") or 0, str(mmsi)
+    bare = name[3:] if name.startswith("LE ") else name
+    tags = []
+    # Irish Naval Service ships are "LE <name>" and Irish-flagged (MMSI 250…); French cruise ships "LE …" are not
+    if ms.startswith("250") and (name.startswith("LE ") and (t == 35 or bare in IRISH_NAVY or t == 0) or t == 35):
+        tags.append("naval")
+    elif t == 35 or name.startswith(("HMS ", "RFA ", "USS ", "USNS ")):
+        tags.append("navy")
+    if name.startswith(("RNLB", "RNLI")) or "LIFEBOAT" in name:
+        tags.append("rnli")
+    elif t == 51 or ms.startswith("111"):
+        tags.append("rescue")
+    return tags
+
+
+def note_ship_special(mmsi, s, tags):
+    today = date.today().isoformat()
+    if ship_specials["day"] != today:
+        ship_specials.update(day=today, seen={})
+    key = str(mmsi)
+    if key in ship_specials["seen"]:
+        return
+    ship_specials["seen"][key] = {"k": tags[0], "flight": s.get("name") or key, "aircraft": s.get("name") or key,
+                                   "first": time.time()}
+    _today_cache["at"] = 0
+    try:
+        SHIP_SPECIALS_PATH.write_text(json.dumps(ship_specials))
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def ais_bbox():
+    r = CFG["radius_km"] * 1.1
+    dlat = r / 111.0
+    dlon = r / (111.0 * max(math.cos(math.radians(CFG["latitude"])), 0.2))
+    return [[CFG["latitude"] - dlat, CFG["longitude"] - dlon], [CFG["latitude"] + dlat, CFG["longitude"] + dlon]]
+
+
+def handle_ais(m):
+    kind = m.get("MessageType")
+    md = m.get("MetaData") or {}
+    body = (m.get("Message") or {}).get(kind) or {}
+    mmsi = md.get("MMSI") or body.get("UserID")
+    if not mmsi or not str(mmsi)[0] in "1234567":   # skip base stations, aids to navigation, beacons
+        return
+    now = time.time()
+    with lock:
+        s = ships.get(mmsi)
+        if s is None:
+            s = ships[mmsi] = {"mmsi": mmsi, "trail": [], **ship_static.get(str(mmsi), {})}
+        name = (md.get("ShipName") or "").strip()
+        if name:
+            s["name"] = name
+        if kind == "ShipStaticData":
+            dim = body.get("Dimension") or {}
+            eta = body.get("Eta") or {}
+            s.update(type=body.get("Type"), destination=(body.get("Destination") or "").strip(" @"),
+                     callsign=(body.get("CallSign") or "").strip(" @"), imo=body.get("ImoNumber") or None,
+                     length_m=(dim.get("A") or 0) + (dim.get("B") or 0) or None,
+                     eta=f"{eta['Day']:02d}/{eta['Month']:02d} {eta['Hour']:02d}:{eta['Minute']:02d}"
+                         if eta.get("Month") and eta.get("Day") and eta.get("Hour", 24) < 24 else None)
+            remember_static(mmsi, s)
+            return
+        if kind == "StaticDataReport":   # class B: name in part A, type in part B
+            rb = body.get("ReportB") or {}
+            if rb.get("Valid") and rb.get("ShipType"):
+                s["type"] = rb["ShipType"]
+                remember_static(mmsi, s)
+            return
+        lat, lon = body.get("Latitude"), body.get("Longitude")
+        if lat is None or lon is None or abs(lat) > 90 or abs(lon) > 180:
+            return
+        if kind == "ExtendedClassBPositionReport" and body.get("Type"):
+            s["type"] = body["Type"]
+            remember_static(mmsi, s)
+        hdg = body.get("TrueHeading")
+        cog = body.get("Cog")
+        s.update(lat=lat, lon=lon, sog=body.get("Sog"), cog=cog if cog is not None and cog < 360 else None,
+                 heading=hdg if hdg is not None and hdg < 360 else None, ts=now)
+        if "NavigationalStatus" in body:
+            s["status"] = NAV_STATUS.get(body["NavigationalStatus"])
+        tr = s["trail"]
+        if not tr or haversine_km(tr[-1][0], tr[-1][1], lat, lon) > 0.05:
+            tr.append([round(lat, 5), round(lon, 5), int(now)])
+            del tr[:-60]
+        ais_status["messages"] += 1
+
+
+def ais_worker():
+    key = CFG.get("aisstream_key")
+    if not key or websocket is None:
+        return
+    delay = 10
+    while True:
+        try:
+            ws = websocket.create_connection("wss://stream.aisstream.io/v0/stream", timeout=120)
+            ws.send(json.dumps({"APIKey": key, "BoundingBoxes": [ais_bbox()],
+                                "FilterMessageTypes": ["PositionReport", "StandardClassBPositionReport",
+                                                       "ExtendedClassBPositionReport", "ShipStaticData", "StaticDataReport"]}))
+            ais_status.update(connected=True, error=None)
+            delay = 10
+            while True:
+                m = json.loads(ws.recv())
+                if "error" in m:
+                    raise RuntimeError(m["error"])
+                handle_ais(m)
+        except Exception as e:  # noqa: BLE001
+            ais_status.update(connected=False, error=str(e)[:200])
+            print("AIS stream:", str(e)[:200], flush=True)
+        time.sleep(delay)
+        delay = min(delay * 2, 300)
+
+
+def ship_list():
+    now = time.time()
+    out = []
+    with lock:
+        for mmsi, s in list(ships.items()):
+            if "lat" not in s:
+                continue
+            stopped = (s.get("sog") or 0) < 0.5
+            if now - s["ts"] > (45 * 60 if stopped else 20 * 60):   # moored ships report every few minutes
+                del ships[mmsi]
+                continue
+            d = haversine_km(CFG["latitude"], CFG["longitude"], s["lat"], s["lon"])
+            if d > CFG["radius_km"] * 1.1:
+                continue
+            tags = ship_tags(s, mmsi)
+            if tags:
+                note_ship_special(mmsi, s, tags)
+            out.append({k: v for k, v in s.items() if k != "trail"} | {
+                "kind": ship_kind(s.get("type"), mmsi), "stopped": stopped, "age_s": int(now - s["ts"]),
+                "distance_km": round(d, 1), "trail": s["trail"][-40:], "tags": tags,
+                "look_dir": compass16(bearing_deg(CFG["latitude"], CFG["longitude"], s["lat"], s["lon"]))})
+    return out
 
 
 # ---------- overhead pass log ----------
@@ -601,10 +802,15 @@ def today_summary():
     low = min(overhead, key=lambda r: r.get("alt_at_min") or 0) if overhead else None
     ident = lambda r: r.get("number") or r.get("callsign") or r.get("registration") or "?"
     specials = []
-    for r in sorted(recs, key=lambda r: r["first"]):
+    for r in recs:
         for k in r.get("tags", []):
             if k in ("emergency", "military", "giant", "new", "rare", "rescue"):
-                specials.append({"k": k, "flight": ident(r), "aircraft": r.get("aircraft") or GIANT_TYPES.get(r.get("type")) or r.get("type")})
+                specials.append({"k": k, "flight": ident(r), "aircraft": r.get("aircraft") or GIANT_TYPES.get(r.get("type")) or r.get("type"),
+                                 "first": r["first"]})
+    if ship_specials.get("day") == date.today().isoformat():
+        specials += list(ship_specials["seen"].values())
+    specials.sort(key=lambda x: x["first"])
+    specials = [{k: v for k, v in x.items() if k != "first"} for x in specials]
     data = {
         "flights": len(recs), "overhead": len(overhead),
         "busiest_hour": busiest, "busiest_count": hours[busiest] if busiest is not None else 0,
@@ -890,7 +1096,13 @@ def api_today():
 @app.get("/api/config")
 def api_config():
     return jsonify({k: CFG[k] for k in ("home_name", "latitude", "longitude", "radius_km", "overhead_km", "refresh_seconds", "tour_seconds", "airports",
-                                  "ahead_minutes", "night_dim", "home_elevation_m", "data_source")})
+                                  "ahead_minutes", "night_dim", "home_elevation_m", "data_source")}
+                   | {"ships": bool(CFG.get("aisstream_key")) and websocket is not None})
+
+
+@app.get("/api/ships")
+def api_ships():
+    return jsonify({"ships": ship_list(), "status": ais_status})
 
 
 @app.get("/api/flights")
@@ -1073,13 +1285,15 @@ def main():
     args = ap.parse_args()
     threading.Thread(target=poller, daemon=True).start()
     threading.Thread(target=enricher, daemon=True).start()
+    threading.Thread(target=ais_worker, daemon=True).start()
     host = "0.0.0.0" if (args.lan or IS_ADDON) else "127.0.0.1"
     port = 8750 if IS_ADDON else CFG["port"]
     url = f"http://127.0.0.1:{port}"
     if not args.no_browser and not IS_ADDON:
         threading.Timer(1.0, lambda: webbrowser.open(url)).start()
     print(f"Overhead Flights running on {host}:{port} — home {CFG['latitude']:.4f},{CFG['longitude']:.4f}, "
-          f"radius {CFG['radius_km']} km" + (", official FR24 key set" if CFG.get("fr24_api_key") else ""), flush=True)
+          f"radius {CFG['radius_km']} km" + (", official FR24 key set" if CFG.get("fr24_api_key") else "")
+          + (", ships on" if CFG.get("aisstream_key") else ""), flush=True)
     try:
         from waitress import serve
         serve(app, host=host, port=port, threads=8)

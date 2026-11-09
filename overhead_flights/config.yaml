@@ -1,5 +1,5 @@
 name: Overhead Flights
-version: "1.3.2"
+version: "1.4.0"
 slug: overhead_flights
 url: https://github.com/jmurphylaois/overhead-flights
 description: >-
@@ -52,3 +52,4 @@ schema:
   fr24_api_key: password?
   fr24_api_per_minute: int(1,10)?
   use_paid_tracks: bool
+  aisstream_key: password?

@@ -6,6 +6,7 @@ A live map of the aircraft flying near your home. Open it from **Flights** in th
 - **Labels** follow each plane, showing the airline logo, flight, route, altitude and speed. The button switches between full, compact and off.
 - **Paths** draws the tracks of every flight.
 - **Ahead** draws dashed lines showing where each plane will be shortly. The line turns orange when a plane is heading over your home.
+- **Ships** shows live ship positions if you add a free key from [aisstream.io](https://aisstream.io) (sign in with GitHub) in **AISStream API key**. Irish Naval Service ships and RNLI lifeboats get badges, and the tour shows them while they're at sea.
 - **Rain** overlays rain radar from RainViewer.
 - **Filters** lets you hide planes on the ground, set an altitude range, pick an airport's arrivals or departures, or pick one airline.
 - **Tour** shows each flight in turn.

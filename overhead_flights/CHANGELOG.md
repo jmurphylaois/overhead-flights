@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.4.0
+- **Ships on the map:** live AIS positions from [aisstream.io](https://aisstream.io), using a free key set in the new **AISStream API key** option.
+  - Moving ships get a heading-pointed icon, a dotted trail and a smaller label, coloured by type (passenger, cargo, tanker, fishing, tug/pilot, rescue, naval, sailing).
+  - Moored and anchored ships show as small dots, labelled on hover.
+  - Click a ship for its speed, destination, ETA, length, call sign and a MarineTraffic link.
+  - A **Ships** button turns the layer on and off. Dashboard card 1.4.0 adds `ships: true`.
+  - Ship names, types and destinations are remembered in `ships_static.json`, because ships only broadcast them every few minutes.
+- **Notable ships** get badges and a pulsing ring:
+  - **IRISH NAVY:** Irish Naval Service "LÉ" ships, Irish-flagged only, so French "LE …" cruise ships aren't tagged.
+  - **RNLI:** lifeboats.
+  - **NAVY:** other navies.
+  - **RESCUE:** search-and-rescue craft.
+- When a notable ship is at sea, the wall view and dashboard card tour to it automatically. It gets the target ring and a ship card showing distance and direction from home.
+- Notable ships seen today appear in the Today strip.
+
 ## 1.3.2
 - Dashboard card 1.3.2 adds `tour_seconds`, which sets how long the tour shows each plane on that card (2–600). Without it, the card uses the add-on's Tour seconds.
 

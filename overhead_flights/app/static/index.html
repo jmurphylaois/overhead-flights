@@ -157,7 +157,8 @@
   .bdg { display: inline-block; font-size: 10px; font-weight: 800; letter-spacing: .05em; border-radius: 4px; padding: 1px 5px; line-height: 1.4; white-space: nowrap; }
   .b-emergency { background: #dc2626; color: #fff; } .b-military { background: #84cc16; color: #0b1016; }
   .b-rescue { background: #facc15; color: #0b1016; } .b-giant { background: #a855f7; color: #fff; }
-  .b-new, .b-rare { background: #fbbf24; color: #0b1016; } .b-heli, .b-bizjet { background: #334155; color: #e6edf3; }
+  .b-new, .b-rare { background: #fbbf24; color: #0b1016; } .b-naval { background: #15803d; color: #fff; } .b-navy { background: #475569; color: #fff; }
+  .b-rnli { background: #f97316; color: #0b1d3a; } .b-heli, .b-bizjet { background: #334155; color: #e6edf3; }
   .pl { position: relative; }
   .halo { position: absolute; inset: -9px; border-radius: 50%; border: 2px solid; animation: halo 1.6s ease-out infinite; pointer-events: none; }
   .target { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); border-radius: 50%; pointer-events: none;
@@ -171,6 +172,11 @@
   @keyframes target { 0%, 100% { transform: translate(-50%, -50%) scale(1); } 50% { transform: translate(-50%, -50%) scale(1.12); } }
   .pl > svg { position: relative; z-index: 1; }
   body.wall .leaflet-tooltip.tag.sel { border: 2px solid var(--accent); background: rgba(10,40,66,.96); box-shadow: 0 0 16px rgba(56,189,248,.6); }
+  .shipdot { border-radius: 50%; border: 1.5px solid #0b1016; opacity: .75; box-shadow: 0 0 0 1px rgba(255,255,255,.25); }
+  .leaflet-tooltip.tag.ship { border-style: dashed; font-size: .88em; opacity: .92; }
+  body.embed.scaled .leaflet-tooltip.tag.ship { font-size: calc(9.5px * var(--s, 1)); }
+  .leaflet-tooltip.tag.ship .kind { font-size: .8em; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; }
+  .shippop b { font-size: 15px; } .shippop .sub { margin-top: 2px; } .shippop a { color: var(--accent); }
   @keyframes halo { from { transform: scale(.55); opacity: 1; } to { transform: scale(1.5); opacity: 0; } }
   .wc-tags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
   .wc-tags .bdg { font-size: 12px; padding: 3px 8px; }
@@ -242,6 +248,7 @@
         <button id="pathbtn" class="chip" title="Show every flight's track">Paths</button>
         <button id="aheadbtn" class="chip" title="Dashed line showing where each plane will be in a few minutes">Ahead</button>
         <button id="rainbtn" class="chip" title="Rain radar">Rain</button>
+        <button id="shipbtn" class="chip" title="Ships (live AIS)" style="display:none">Ships</button>
         <button id="filterbtn" class="chip" title="Filter which aircraft are shown">Filters</button>
         <button id="tourbtn" class="chip" title="Cycle through every flight">▶ Tour</button>
       </div>
@@ -296,7 +303,10 @@ const SUMMARY = !(EMBED && QS.get("summary") === "0");   // "Today" strip
 let CFG, map, selected = null, trailLayer = null, routeLayer = null, fetchedAt = 0;
 let focus = null;   // {f, kind} while a plane is about to pass overhead or squawking an emergency
 const JUMP = new Set(["emergency", "military", "giant", "new", "rare", "rescue"]);
-const TAGCOL = { emergency: "#dc2626", military: "#84cc16", rescue: "#facc15", giant: "#a855f7", new: "#fbbf24", rare: "#fbbf24" };
+const TAGCOL = { emergency: "#dc2626", military: "#84cc16", rescue: "#facc15", giant: "#a855f7", new: "#fbbf24", rare: "#fbbf24",
+  naval: "#22c55e", navy: "#94a3b8", rnli: "#f97316" };
+const SHIPTAG = { naval: "IRISH NAVY", navy: "NAVY", rnli: "RNLI", rescue: "RESCUE" };
+const shipBadges = s => (s.tags || []).map(k => `<span class="bdg b-${k}">${SHIPTAG[k]}</span>`).join(" ");
 const special = f => (f.tags || []).find(t => JUMP.has(t.k));
 const badges = (f, max = 2) => (f.tags || []).slice(0, max).map(t => `<span class="bdg b-${t.k}">${esc(t.s)}</span>`).join("");
 let allFlights = [], lastFlights = [], detail = null;
@@ -437,6 +447,13 @@ async function init() {
   toggle("#pathbtn", "paths", () => pathsOn, v => pathsOn = v, drawPaths);
   toggle("#aheadbtn", "ahead", () => aheadOn, v => aheadOn = v, drawAhead);
   toggle("#rainbtn", "rain", () => rainOn, v => rainOn = v, drawRain);
+  if (CFG.ships) {
+    shipsOn = EMBED ? QS.get("ships") === "1" : WALL || store.get("ships", "1") === "1";
+    $("#shipbtn").style.display = "";
+    toggle("#shipbtn", "ships", () => shipsOn, v => shipsOn = v, drawShips);
+    map.createPane("ships"); map.getPane("ships").style.zIndex = 590;
+    drawShips(); setInterval(drawShips, 15000);
+  }
   const tagLabel = () => $("#tagbtn").textContent = "Labels: " + tagMode;
   tagLabel();
   $("#tagbtn").onclick = () => {
@@ -444,6 +461,7 @@ async function init() {
     store.set("tags", tagMode); tagLabel();
     for (const m of markers.values()) { m.unbindTooltip(); m._lastLabel = null; }
     drawMarkers(lastFlights);
+    if (shipsOn) { for (const m of shipMarkers.values()) m.unbindTooltip(); drawShips(); }
   };
   $("#tourbtn").onclick = () => tourOn ? stopTour() : startTour();
   $("#wtbtn").onclick = whatsThat;
@@ -557,6 +575,101 @@ function drawPasses(passes) {
       <span class="sub">${esc(p.airline || "")} · ${esc(p.from || "?")} → ${esc(p.to || "?")}</span>
       <span class="sub r">${fmtAlt(p.altitude_ft)} · ${p.distance_km} km</span>
     </div>`).join("") : `<div class="empty">Nothing within ${CFG.overhead_km} km yet today.</div>`;
+}
+
+// ---------- ships (live AIS) ----------
+const SHIPCOL = { passenger: "#f472b6", "fast ferry": "#ec4899", cargo: "#22c55e", tanker: "#ef4444", fishing: "#f59e0b",
+  tug: "#a78bfa", pilot: "#a78bfa", sar: "#facc15", military: "#84cc16", sailing: "#e2e8f0", pleasure: "#e2e8f0",
+  service: "#94a3b8", other: "#94a3b8" };
+let shipsOn = false, shipMarkers = new Map(), shipTrails = null, lastShips = [];
+let shipSel = null;   // MMSI of the ship the wall card is showing
+function shipIcon(s) {
+  const c = SHIPCOL[s.kind] || SHIPCOL.other, z = Math.round((WALL ? 22 : 18) * Math.max(1, SCALE * 0.8));
+  const tag = (s.tags || [])[0], sel = s.mmsi === shipSel;
+  if (tag || sel) {
+    // notable ships always pulse in their badge colour; the toured one also gets the target ring
+    const zz = sel ? Math.round(z * 1.3) : z, r = Math.round(zz * 2.3);
+    const svg = `<svg width="${zz}" height="${zz}" viewBox="0 0 24 24" style="transform:rotate(${s.stopped ? 0 : (s.heading ?? s.cog ?? 0)}deg)">
+      <path d="M12 1.5L17 9v12.5q-5 2-10 0V9z" fill="${tag ? TAGCOL[tag] : c}" stroke="#fff" stroke-width="1.4"/></svg>`;
+    const html = `<div class="pl" style="width:${zz}px;height:${zz}px">
+      ${sel ? `<div class="target" style="width:${r}px;height:${r}px"><i></i><i></i><i></i><i></i></div>` : ""}
+      ${tag ? `<div class="halo" style="border-color:${TAGCOL[tag]}"></div>` : ""}${svg}</div>`;
+    return L.divIcon({ html, className: "", iconSize: [zz, zz], iconAnchor: [zz / 2, zz / 2] });
+  }
+  if (s.stopped) {
+    const d = Math.round(z * .5);
+    return L.divIcon({ html: `<div class="shipdot" style="width:${d}px;height:${d}px;background:${c}"></div>`, className: "", iconSize: [d, d], iconAnchor: [d / 2, d / 2] });
+  }
+  const svg = `<svg width="${z}" height="${z}" viewBox="0 0 24 24" style="transform:rotate(${s.heading ?? s.cog ?? 0}deg)">
+    <path d="M12 1.5L17 9v12.5q-5 2-10 0V9z" fill="${c}" stroke="#0b1016" stroke-width="1.3"/><path d="M9.5 12h5" stroke="#0b1016" stroke-width="1.2"/></svg>`;
+  return L.divIcon({ html: svg, className: "", iconSize: [z, z], iconAnchor: [z / 2, z / 2] });
+}
+const shipName = s => esc(s.name || "MMSI " + s.mmsi);
+const shipSpeed = s => s.stopped ? (s.status || "stopped") : `${(s.sog || 0).toFixed(1)} kn`;
+function shipLabel(s) {
+  let kind = `<span class="kind" style="color:${SHIPCOL[s.kind]}">${esc(s.kind)}</span>`;
+  if (s.tags?.length) kind = shipBadges(s);
+  if (tagMode === "compact") return `<div class="tg-top"><b>${shipName(s)}</b> ${kind} <span class="tg-dim">${shipSpeed(s)}</span></div>`;
+  return `<div class="tg-top"><b>${shipName(s)}</b> ${kind}</div>
+    <div class="tg-dim">${shipSpeed(s)}${s.destination ? " → " + esc(s.destination) : ""}</div>`;
+}
+function shipPopup(s) {
+  const row = (k, v) => v ? `<div class="sub">${k}: <b style="font-size:inherit">${esc(String(v))}</b></div>` : "";
+  return `<div class="shippop"><b>${shipName(s)}</b>
+    <div class="sub" style="color:${SHIPCOL[s.kind]};font-weight:700;text-transform:uppercase">${esc(s.kind)}</div>
+    ${row("Speed", shipSpeed(s))}${row("Heading", s.cog != null ? Math.round(s.cog) + "°" : "")}${row("Destination", s.destination)}${row("ETA", s.eta)}
+    ${row("Length", s.length_m ? s.length_m + " m" : "")}${row("Call sign", s.callsign)}${row("Distance", s.distance_km + " km")}
+    <div class="sub" style="margin-top:6px"><a href="https://www.marinetraffic.com/en/ais/details/ships/mmsi:${s.mmsi}" target="_blank">MarineTraffic ↗</a></div></div>`;
+}
+function showShip(s) {
+  select(null);
+  shipSel = s.mmsi; drawShips();
+  const who = { naval: "Irish Naval Service", navy: "Navy", rnli: "RNLI lifeboat", rescue: "Search and rescue" }[s.tags[0]] || s.kind;
+  $("#wallinner").innerHTML = `<div class="wc-in nophoto"><div class="wc-body">
+    <div class="wc-top"><b>${shipName(s)}</b><span class="sub">${esc(who)}</span></div>
+    <div class="wc-tags">${shipBadges(s)}</div>
+    <div class="wc-route">${s.stopped ? esc(s.status || "stopped") : "At sea"}${s.destination ? ` → ${esc(s.destination)}` : ""}
+      <span class="sub">${s.distance_km} km ${esc(s.look_dir)} of home</span></div>
+    <div class="wc-stats">
+      <div><div class="k">Speed</div><div class="v">${(s.sog || 0).toFixed(1)} kn</div></div>
+      ${s.cog != null ? `<div><div class="k">Heading</div><div class="v">${Math.round(s.cog)}°</div></div>` : ""}
+      ${s.length_m ? `<div><div class="k">Length</div><div class="v">${s.length_m} m</div></div>` : ""}
+      <div><div class="k">Type</div><div class="v">${esc(s.kind)}</div></div>
+    </div></div></div>`;
+}
+
+async function drawShips() {
+  if (!shipsOn) {
+    for (const m of shipMarkers.values()) map.removeLayer(m);
+    shipMarkers.clear(); if (shipTrails) { map.removeLayer(shipTrails); shipTrails = null; } return;
+  }
+  let data;
+  try { data = await (await fetch("api/ships")).json(); } catch { return; }
+  if (!shipsOn) return;
+  lastShips = data.ships;
+  const seen = new Set();
+  for (const s of lastShips) {
+    seen.add(s.mmsi);
+    let m = shipMarkers.get(s.mmsi);
+    if (!m) {
+      m = L.marker([s.lat, s.lon], { pane: "ships" }).addTo(map);
+      if (!WALL) m.bindPopup("");
+      shipMarkers.set(s.mmsi, m);
+    }
+    m.setLatLng([s.lat, s.lon]).setIcon(shipIcon(s)).setZIndexOffset(s.tags?.length || s.mmsi === shipSel ? 1000 : 0);
+    if (!WALL) m.setPopupContent(shipPopup(s));
+    // moving ships get a permanent label; moored/anchored ones only on hover, so ports don't drown in text
+    const notable = s.tags?.length || s.mmsi === shipSel;
+    const permanent = tagMode !== "off" && (!s.stopped || notable), cls = "tag ship" + (s.mmsi === shipSel ? " sel" : ""), html = shipLabel(s);
+    const tt = m.getTooltip();
+    if (!tt || tt.options.permanent !== permanent || tt.options.className !== cls)
+      m.unbindTooltip().bindTooltip(html, { permanent, direction: "right", offset: [s.mmsi === shipSel ? Math.round(30 * Math.max(1, SCALE * 0.8)) : 12, 0], className: cls });
+    else m.setTooltipContent(html);
+  }
+  for (const [id, m] of shipMarkers) if (!seen.has(id)) { map.removeLayer(m); shipMarkers.delete(id); }
+  if (shipTrails) map.removeLayer(shipTrails);
+  shipTrails = L.layerGroup(lastShips.filter(s => !s.stopped && s.trail.length > 1).map(s =>
+    L.polyline(s.trail.map(p => [p[0], p[1]]), { color: SHIPCOL[s.kind], weight: 2, opacity: .55, dashArray: "2 5", interactive: false, pane: "ships" }))).addTo(map);
 }
 
 // ---------- all-paths layer ----------
@@ -810,11 +923,19 @@ const shownAt = {};   // flight id -> when the tour last showed it
 function tourStep() {
   if (!tourOn) return;
   clearTimeout(tourTimer);
+  if (shipSel != null) { shipSel = null; drawShips(); }
   // a plane about to pass overhead (or squawking an emergency) holds the tour until it has gone by
   if (focus) {
     if (selected !== focus.f.id) select(focus.f.id);
     document.querySelectorAll(".tourbar").forEach(b => b.classList.remove("run"));
     tourTimer = setTimeout(tourStep, 2000);
+    return;
+  }
+  // RNLI lifeboats and naval ships out at sea get shown automatically (at most once every 2 minutes each)
+  const ship = WALL && shipsOn && lastShips.find(s => s.tags?.length && !s.stopped && Date.now() - (shownAt["ship" + s.mmsi] || 0) > 120000);
+  if (ship) {
+    shownAt["ship" + ship.mmsi] = Date.now(); showShip(ship);
+    restartBar(); tourTimer = setTimeout(tourStep, tourSec() * 1000);
     return;
   }
   const live = new Set(lastFlights.map(f => f.id));
@@ -902,7 +1023,7 @@ async function loadToday() {
   for (const x of [...d.specials].reverse()) {
     if (seen.has(x.flight)) continue;
     seen.add(x.flight);
-    sp.push(`<span class="bdg b-${x.k}">${{ emergency: "⚠", military: "MIL", giant: "GIANT", new: "★ FIRST", rare: "★ RARE", rescue: "RESCUE" }[x.k]}</span>${esc(x.aircraft || x.flight)}`);
+    sp.push(`<span class="bdg b-${x.k}">${{ emergency: "⚠", military: "MIL", giant: "GIANT", new: "★ FIRST", rare: "★ RARE", rescue: "RESCUE", ...SHIPTAG }[x.k]}</span>${esc(x.aircraft || x.flight)}`);
   }
   if (sp.length) parts.push(sp.slice(0, 4).join("  "));
   const html = `<b>TODAY</b> ` + parts.join(" · ");

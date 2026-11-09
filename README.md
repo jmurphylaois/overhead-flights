@@ -12,6 +12,7 @@ A live map of the aircraft flying over your home. It runs as a **Home Assistant 
 - **What's that plane?** shows the plane highest in your sky right now. You get its photo, route and type, which way to look (e.g. "Look NW, 23° up"), and a sky-view compass.
 - Every flight shows **where to look**: the compass direction, plus the angle above the horizon (allowing for the Earth's curve).
 - **Ahead** draws a dashed line showing where each plane will be in `ahead_minutes`. The line turns orange and bold if the plane is heading over the house.
+- **Ships** (optional, with a free [aisstream.io](https://aisstream.io) key) shows live AIS ship positions, coloured by type. Irish Naval Service ships and RNLI lifeboats get badges, and the tour shows them automatically while they're at sea.
 - **Rain** overlays the latest rain radar from RainViewer (free), refreshed every 10 minutes.
 - **Filters:** hide planes on the ground, set a min/max altitude, show only arrivals or departures at a marked airport (or hide them), or pick one airline.
 - **Stats** (`/stats`) shows:
@@ -60,6 +61,7 @@ The repo includes a Lovelace card, [`card/overhead-flights-card.js`](card/overhe
    tour_seconds: 30          # seconds per aircraft (default: the add-on's tour_seconds)
    labels: compact           # full | compact | off
    paths: true               # draw every plane's recent track
+   ships: true               # show ships (needs the add-on's AISStream key)
    alerts: true              # overhead countdown, emergency banner, unusual aircraft first (default on)
    summary: true             # "Today" strip (default on)
    scale: 2                  # enlarge text, labels and the flight card for a wall screen (1-4, default 1)
@@ -88,6 +90,7 @@ The first run sets up a virtualenv. After that, the app opens at http://127.0.0.
 | tour_seconds | how long Tour stays on each flight (default 5) |
 | airports | airports marked on the map (Dublin by default) |
 | data_source | `adsb_lol` (default, open data) or `fr24_web` |
+| aisstream_key | optional free key from aisstream.io, used to show ships (AIS) |
 | fr24_api_key | optional official FR24 API key, used for airline/airport names and click-to-view tracks |
 | fr24_api_per_minute | maximum official API calls per minute (default 8; the key allows 10) |
 | use_paid_tracks | set to false to never spend the 40 credits a track lookup costs |

@@ -44,5 +44,10 @@ configuration:
   use_paid_tracks:
     name: Use FR24 credits for tracks
     description: Allow the official API (40 credits per track) when you click a flight whose track is otherwise unavailable.
+  aisstream_key:
+    name: AISStream API key (optional, shows ships)
+    description: >-
+      A free key from aisstream.io (sign in with GitHub). Ships in range appear on the map, coloured by type,
+      using live AIS positions. Leave empty to show aircraft only.
 network:
   8750/tcp: Direct access for wall tablets (optional)
