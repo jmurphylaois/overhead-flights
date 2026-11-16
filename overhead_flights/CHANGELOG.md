@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.4.1
+- **Missing aircraft photos** now show a soft plane icon instead of a broken image, in the side panel, the wall view and the dashboard card. This also covers photos that fail to load, and the photo credit is hidden when there's no photo.
+- **Fixed broken photo links:** FlightRadar24 sometimes sends photo URLs as `https:https://…` or `//…`. They are now cleaned up, so many photos that never loaded now appear. Unusable URLs fall back to Planespotters, then a type photo.
+
 ## 1.4.0
 - **Ships on the map:** live AIS positions from [aisstream.io](https://aisstream.io), using a free key set in the new **AISStream API key** option.
   - Moving ships get a heading-pointed icon, a dotted trail and a smaller label, coloured by type (passenger, cargo, tanker, fishing, tug/pilot, rescue, naval, sailing).

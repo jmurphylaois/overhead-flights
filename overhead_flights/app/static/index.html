@@ -112,6 +112,11 @@
   .wc-in.nophoto { grid-template-columns: 1fr; }
   .wc-photo { width: 100%; height: 100%; object-fit: cover; min-height: 170px; display: block; }
   .wc-body { padding: 16px 20px; }
+  /* placeholder when there is no aircraft photo (or it fails to load) */
+  .ph-fallback { display: flex; align-items: center; justify-content: center; color: rgba(56,189,248,.5);
+    background: radial-gradient(circle at 50% 45%, rgba(56,189,248,.14), transparent 65%), var(--card); }
+  .ph-fallback svg { width: 38%; max-width: 110px; height: auto; transform: rotate(45deg); filter: drop-shadow(0 0 10px rgba(56,189,248,.35)); }
+  .photo.ph-fallback { aspect-ratio: 16/10; }
   .wc-top { display: flex; align-items: center; gap: 12px; }
   .wc-top b { font-size: 30px; letter-spacing: .02em; }
   .wc-route { font-size: 22px; font-weight: 600; margin: 8px 0 10px; }
@@ -791,10 +796,23 @@ async function loadDetail(id, manual = false) {
   if (f) updateLive(f);
 }
 
+// plane icon shown when there is no photo, or the photo fails to load
+const PLANE_SVG = `<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M21 16v-2l-8-5V3.5a1.5 1.5 0 0 0-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/></svg>`;
+function photoFallback(cls) { return `<div class="${cls} ph-fallback" title="No photo available">${PLANE_SVG}</div>`; }
+window.ofPhotoErr = function (img) {
+  const cls = img.classList.contains("wc-photo") ? "wc-photo" : "photo";
+  const box = img.closest("a") || img;
+  const holder = box.parentElement;
+  box.insertAdjacentHTML("afterend", photoFallback(cls));
+  box.remove();
+  // drop the photo credit too, since there is no photo
+  if (cls === "photo") { const c = holder && holder.querySelector(".credit"); if (c) c.remove(); }
+  else { const c = document.querySelector("#wallinner .wc-credit"); if (c) c.remove(); }
+};
 // aircraft photo with the photographer credit (planespotters.net asks for a credit + link back)
 function photoBlock(d, f) {
-  if (!d.photo) return "";
-  const img = `<img class="photo" src="${esc(d.photo)}" alt="Photo of ${esc(f.registration)}">`;
+  if (!d.photo) return photoFallback("photo");
+  const img = `<img class="photo" src="${esc(d.photo)}" alt="Photo of ${esc(f.registration)}" onerror="ofPhotoErr(this)">`;
   const credit = d.photo_source === "type"
     ? `Type photo (not this aircraft) · <a href="${esc(d.photo_link)}" target="_blank" style="color:inherit">${esc(d.photo_credit)} on Wikipedia</a>`
     : d.photo_link
@@ -844,8 +862,8 @@ function updateLive(f) {
       ${f.squawk ? `<span>Squawk</span><span>${esc(f.squawk)}</span>` : ""}
     </div>`;
   if (WALL) {
-    $("#wallinner").innerHTML = `<div class="wc-in ${d.photo ? "" : "nophoto"}">
-      ${d.photo ? `<img class="wc-photo" src="${esc(d.photo)}" alt="">` : ""}
+    $("#wallinner").innerHTML = `<div class="wc-in">
+      ${d.photo ? `<img class="wc-photo" src="${esc(d.photo)}" alt="" onerror="ofPhotoErr(this)">` : photoFallback("wc-photo")}
       <div class="wc-body">
         <div class="wc-top">${logo(f, "big")}<b>${esc(f.number || f.callsign)}</b><span class="sub">${airline}</span></div>
         ${tagLine(f)}
@@ -856,7 +874,7 @@ function updateLive(f) {
           <div><div class="k">Aircraft</div><div class="v">${esc(f.aircraft || f.aircraft_code || "—")}</div></div>
           <div><div class="k">Where to look</div><div class="v">${esc(lookText(f))}</div></div>
         </div>
-        ${d.photo && d.photo_credit ? `<div class="sub" style="margin-top:10px;font-size:11px">${d.photo_source === "type"
+        ${d.photo && d.photo_credit ? `<div class="sub wc-credit" style="margin-top:10px;font-size:11px">${d.photo_source === "type"
           ? `Type photo · ${esc(d.photo_credit)} (Wikipedia)` : `Photo © ${esc(d.photo_credit)}${d.photo_link ? " / Planespotters.net" : ""}`}</div>` : ""}
       </div></div>`;
   }
@@ -899,7 +917,7 @@ async function whatsThat() {
     d = d || {};
     const o = d.origin || {}, de = d.destination || {};
     card.innerHTML = `
-      ${d.photo ? `<div style="margin-bottom:10px">${photoBlock(d, f)}</div>` : ""}
+      <div style="margin-bottom:10px">${photoBlock(d, f)}</div>
       <div class="wtgrid"><div>
         <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">${logo(f, "huge")}</div>
         <div class="wtbig">${esc(f.number || f.callsign)}</div>

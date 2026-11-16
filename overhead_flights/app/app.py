@@ -259,7 +259,7 @@ def summarise_details(d):
         "aircraft": g("aircraft", "model", "text"),
         "origin": airport("origin"),
         "destination": airport("destination"),
-        "photo": thumbs[0]["src"] if thumbs else None,
+        "photo": _clean_url(thumbs[0].get("src")) if thumbs else None,
         "photo_credit": thumbs[0].get("copyright") if thumbs else None,
         "status": g("status", "text"),
         "dep_scheduled": _dig(t, "scheduled", "departure"),
@@ -1061,6 +1061,18 @@ def poller():
 
 
 # ---------- HTTP ----------
+def _clean_url(u):
+    """FR24 sometimes sends broken image URLs like 'https:https://...' or '//host/...'."""
+    if not u:
+        return None
+    u = u.strip()
+    while u.lower().startswith(("https:https:", "https:http:", "http:https:", "http:http:")):
+        u = u.split(":", 1)[1]
+    if u.startswith("//"):
+        u = "https:" + u
+    return u if u.startswith(("http://", "https://")) else None
+
+
 @app.get("/")
 def index():
     return send_from_directory(app.static_folder, "index.html")
